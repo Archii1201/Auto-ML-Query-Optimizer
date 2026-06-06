@@ -1,0 +1,692 @@
+{
+  "query_id": "ds_q11_inventory_check",
+  "variant": "no_hashjoin",
+  "variant_knobs": [
+    "SET enable_hashjoin  = off"
+  ],
+  "tag": "join+agg",
+  "sql": "SELECT w_warehouse_name, AVG(inv_quantity_on_hand) avg_qty\n            FROM inventory, warehouse, date_dim\n            WHERE inv_warehouse_sk = w_warehouse_sk\n              AND inv_date_sk = d_date_sk\n              AND d_year = 2001\n            GROUP BY w_warehouse_name\n            ORDER BY avg_qty DESC",
+  "sql_hash": "f9e9088a",
+  "collected_at": "2026-06-05T19:12:12.510194+00:00",
+  "wall_time_ms": 951.482,
+  "summary": {
+    "estimated_total_cost": 22451.99,
+    "estimated_startup_cost": 22451.98,
+    "estimated_rows": 1,
+    "actual_total_time_ms": 882.228,
+    "actual_rows": 1.0,
+    "planning_time_ms": 0.258,
+    "execution_time_ms": 947.458,
+    "root_node_type": "Sort"
+  },
+  "plan": [
+    {
+      "Plan": {
+        "Node Type": "Sort",
+        "Parallel Aware": false,
+        "Async Capable": false,
+        "Startup Cost": 22451.98,
+        "Total Cost": 22451.99,
+        "Plan Rows": 1,
+        "Plan Width": 52,
+        "Actual Startup Time": 881.58,
+        "Actual Total Time": 882.228,
+        "Actual Rows": 1.0,
+        "Actual Loops": 1,
+        "Disabled": false,
+        "Output": [
+          "warehouse.w_warehouse_name",
+          "(avg(inventory.inv_quantity_on_hand))"
+        ],
+        "Sort Key": [
+          "(avg(inventory.inv_quantity_on_hand)) DESC"
+        ],
+        "Sort Method": "quicksort",
+        "Sort Space Used": 25,
+        "Sort Space Type": "Memory",
+        "Shared Hit Blocks": 5807,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 968,
+        "Temp Written Blocks": 970,
+        "Plans": [
+          {
+            "Node Type": "Aggregate",
+            "Strategy": "Sorted",
+            "Partial Mode": "Finalize",
+            "Parent Relationship": "Outer",
+            "Parallel Aware": false,
+            "Async Capable": false,
+            "Startup Cost": 22446.53,
+            "Total Cost": 22451.97,
+            "Plan Rows": 1,
+            "Plan Width": 52,
+            "Actual Startup Time": 881.564,
+            "Actual Total Time": 882.21,
+            "Actual Rows": 1.0,
+            "Actual Loops": 1,
+            "Disabled": false,
+            "Output": [
+              "warehouse.w_warehouse_name",
+              "avg(inventory.inv_quantity_on_hand)"
+            ],
+            "Group Key": [
+              "warehouse.w_warehouse_name"
+            ],
+            "Shared Hit Blocks": 5807,
+            "Shared Read Blocks": 0,
+            "Shared Dirtied Blocks": 0,
+            "Shared Written Blocks": 0,
+            "Local Hit Blocks": 0,
+            "Local Read Blocks": 0,
+            "Local Dirtied Blocks": 0,
+            "Local Written Blocks": 0,
+            "Temp Read Blocks": 968,
+            "Temp Written Blocks": 970,
+            "Plans": [
+              {
+                "Node Type": "Gather Merge",
+                "Parent Relationship": "Outer",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 22446.53,
+                "Total Cost": 22451.95,
+                "Plan Rows": 2,
+                "Plan Width": 52,
+                "Actual Startup Time": 881.525,
+                "Actual Total Time": 882.173,
+                "Actual Rows": 2.0,
+                "Actual Loops": 1,
+                "Disabled": false,
+                "Output": [
+                  "warehouse.w_warehouse_name",
+                  "(PARTIAL avg(inventory.inv_quantity_on_hand))"
+                ],
+                "Workers Planned": 1,
+                "Workers Launched": 1,
+                "Shared Hit Blocks": 5807,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 968,
+                "Temp Written Blocks": 970,
+                "Plans": [
+                  {
+                    "Node Type": "Aggregate",
+                    "Strategy": "Sorted",
+                    "Partial Mode": "Partial",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 21446.52,
+                    "Total Cost": 21451.72,
+                    "Plan Rows": 1,
+                    "Plan Width": 52,
+                    "Actual Startup Time": 513.98,
+                    "Actual Total Time": 513.988,
+                    "Actual Rows": 1.0,
+                    "Actual Loops": 2,
+                    "Disabled": false,
+                    "Output": [
+                      "warehouse.w_warehouse_name",
+                      "PARTIAL avg(inventory.inv_quantity_on_hand)"
+                    ],
+                    "Group Key": [
+                      "warehouse.w_warehouse_name"
+                    ],
+                    "Shared Hit Blocks": 5807,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 968,
+                    "Temp Written Blocks": 970,
+                    "Workers": [
+                      {
+                        "Worker Number": 0,
+                        "Actual Startup Time": 147.115,
+                        "Actual Total Time": 147.119,
+                        "Actual Rows": 1.0,
+                        "Actual Loops": 1,
+                        "Shared Hit Blocks": 2829,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 436,
+                        "Temp Written Blocks": 437
+                      }
+                    ],
+                    "Plans": [
+                      {
+                        "Node Type": "Sort",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": false,
+                        "Async Capable": false,
+                        "Startup Cost": 21446.52,
+                        "Total Cost": 21448.25,
+                        "Plan Rows": 691,
+                        "Plan Width": 24,
+                        "Actual Startup Time": 501.584,
+                        "Actual Total Time": 504.684,
+                        "Actual Rows": 23400.0,
+                        "Actual Loops": 2,
+                        "Disabled": false,
+                        "Output": [
+                          "warehouse.w_warehouse_name",
+                          "inventory.inv_quantity_on_hand"
+                        ],
+                        "Sort Key": [
+                          "warehouse.w_warehouse_name"
+                        ],
+                        "Sort Method": "quicksort",
+                        "Sort Space Used": 769,
+                        "Sort Space Type": "Memory",
+                        "Shared Hit Blocks": 5807,
+                        "Shared Read Blocks": 0,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 968,
+                        "Temp Written Blocks": 970,
+                        "Workers": [
+                          {
+                            "Worker Number": 0,
+                            "Actual Startup Time": 138.358,
+                            "Actual Total Time": 140.612,
+                            "Actual Rows": 36968.0,
+                            "Actual Loops": 1,
+                            "Sort Method": "quicksort",
+                            "Sort Space Used": 2981,
+                            "Sort Space Type": "Memory",
+                            "Shared Hit Blocks": 2829,
+                            "Shared Read Blocks": 0,
+                            "Shared Dirtied Blocks": 0,
+                            "Shared Written Blocks": 0,
+                            "Local Hit Blocks": 0,
+                            "Local Read Blocks": 0,
+                            "Local Dirtied Blocks": 0,
+                            "Local Written Blocks": 0,
+                            "Temp Read Blocks": 436,
+                            "Temp Written Blocks": 437
+                          }
+                        ],
+                        "Plans": [
+                          {
+                            "Node Type": "Nested Loop",
+                            "Parent Relationship": "Outer",
+                            "Parallel Aware": false,
+                            "Async Capable": false,
+                            "Join Type": "Inner",
+                            "Startup Cost": 20704.65,
+                            "Total Cost": 21413.93,
+                            "Plan Rows": 691,
+                            "Plan Width": 24,
+                            "Actual Startup Time": 440.885,
+                            "Actual Total Time": 489.707,
+                            "Actual Rows": 23400.0,
+                            "Actual Loops": 2,
+                            "Disabled": false,
+                            "Output": [
+                              "warehouse.w_warehouse_name",
+                              "inventory.inv_quantity_on_hand"
+                            ],
+                            "Inner Unique": false,
+                            "Join Filter": "(inventory.inv_warehouse_sk = warehouse.w_warehouse_sk)",
+                            "Rows Removed by Join Filter": 0,
+                            "Shared Hit Blocks": 5799,
+                            "Shared Read Blocks": 0,
+                            "Shared Dirtied Blocks": 0,
+                            "Shared Written Blocks": 0,
+                            "Local Hit Blocks": 0,
+                            "Local Read Blocks": 0,
+                            "Local Dirtied Blocks": 0,
+                            "Local Written Blocks": 0,
+                            "Temp Read Blocks": 968,
+                            "Temp Written Blocks": 970,
+                            "Workers": [
+                              {
+                                "Worker Number": 0,
+                                "Actual Startup Time": 95.598,
+                                "Actual Total Time": 129.987,
+                                "Actual Rows": 36968.0,
+                                "Actual Loops": 1,
+                                "Shared Hit Blocks": 2821,
+                                "Shared Read Blocks": 0,
+                                "Shared Dirtied Blocks": 0,
+                                "Shared Written Blocks": 0,
+                                "Local Hit Blocks": 0,
+                                "Local Read Blocks": 0,
+                                "Local Dirtied Blocks": 0,
+                                "Local Written Blocks": 0,
+                                "Temp Read Blocks": 436,
+                                "Temp Written Blocks": 437
+                              }
+                            ],
+                            "Plans": [
+                              {
+                                "Node Type": "Merge Join",
+                                "Parent Relationship": "Outer",
+                                "Parallel Aware": false,
+                                "Async Capable": false,
+                                "Join Type": "Inner",
+                                "Startup Cost": 20704.65,
+                                "Total Cost": 21402.56,
+                                "Plan Rows": 691,
+                                "Plan Width": 12,
+                                "Actual Startup Time": 439.924,
+                                "Actual Total Time": 465.365,
+                                "Actual Rows": 23400.0,
+                                "Actual Loops": 2,
+                                "Disabled": false,
+                                "Output": [
+                                  "inventory.inv_quantity_on_hand",
+                                  "inventory.inv_warehouse_sk"
+                                ],
+                                "Inner Unique": false,
+                                "Merge Cond": "(inventory.inv_date_sk = date_dim.d_date_sk)",
+                                "Shared Hit Blocks": 5797,
+                                "Shared Read Blocks": 0,
+                                "Shared Dirtied Blocks": 0,
+                                "Shared Written Blocks": 0,
+                                "Local Hit Blocks": 0,
+                                "Local Read Blocks": 0,
+                                "Local Dirtied Blocks": 0,
+                                "Local Written Blocks": 0,
+                                "Temp Read Blocks": 968,
+                                "Temp Written Blocks": 970,
+                                "Workers": [
+                                  {
+                                    "Worker Number": 0,
+                                    "Actual Startup Time": 93.772,
+                                    "Actual Total Time": 111.687,
+                                    "Actual Rows": 36968.0,
+                                    "Actual Loops": 1,
+                                    "Shared Hit Blocks": 2820,
+                                    "Shared Read Blocks": 0,
+                                    "Shared Dirtied Blocks": 0,
+                                    "Shared Written Blocks": 0,
+                                    "Local Hit Blocks": 0,
+                                    "Local Read Blocks": 0,
+                                    "Local Dirtied Blocks": 0,
+                                    "Local Written Blocks": 0,
+                                    "Temp Read Blocks": 436,
+                                    "Temp Written Blocks": 437
+                                  }
+                                ],
+                                "Plans": [
+                                  {
+                                    "Node Type": "Sort",
+                                    "Parent Relationship": "Outer",
+                                    "Parallel Aware": false,
+                                    "Async Capable": false,
+                                    "Startup Cost": 17742.33,
+                                    "Total Cost": 18087.77,
+                                    "Plan Rows": 138176,
+                                    "Plan Width": 20,
+                                    "Actual Startup Time": 266.489,
+                                    "Actual Total Time": 344.676,
+                                    "Actual Rows": 94051.0,
+                                    "Actual Loops": 2,
+                                    "Disabled": false,
+                                    "Output": [
+                                      "inventory.inv_quantity_on_hand",
+                                      "inventory.inv_warehouse_sk",
+                                      "inventory.inv_date_sk"
+                                    ],
+                                    "Sort Key": [
+                                      "inventory.inv_date_sk"
+                                    ],
+                                    "Sort Method": "external merge",
+                                    "Sort Space Used": 4256,
+                                    "Sort Space Type": "Disk",
+                                    "Shared Hit Blocks": 1733,
+                                    "Shared Read Blocks": 0,
+                                    "Shared Dirtied Blocks": 0,
+                                    "Shared Written Blocks": 0,
+                                    "Local Hit Blocks": 0,
+                                    "Local Read Blocks": 0,
+                                    "Local Dirtied Blocks": 0,
+                                    "Local Written Blocks": 0,
+                                    "Temp Read Blocks": 968,
+                                    "Temp Written Blocks": 970,
+                                    "Workers": [
+                                      {
+                                        "Worker Number": 0,
+                                        "Actual Startup Time": 71.075,
+                                        "Actual Total Time": 78.275,
+                                        "Actual Rows": 60310.0,
+                                        "Actual Loops": 1,
+                                        "Sort Method": "external merge",
+                                        "Sort Space Used": 3488,
+                                        "Sort Space Type": "Disk",
+                                        "Shared Hit Blocks": 788,
+                                        "Shared Read Blocks": 0,
+                                        "Shared Dirtied Blocks": 0,
+                                        "Shared Written Blocks": 0,
+                                        "Local Hit Blocks": 0,
+                                        "Local Read Blocks": 0,
+                                        "Local Dirtied Blocks": 0,
+                                        "Local Written Blocks": 0,
+                                        "Temp Read Blocks": 436,
+                                        "Temp Written Blocks": 437
+                                      }
+                                    ],
+                                    "Plans": [
+                                      {
+                                        "Node Type": "Seq Scan",
+                                        "Parent Relationship": "Outer",
+                                        "Parallel Aware": true,
+                                        "Async Capable": false,
+                                        "Relation Name": "inventory",
+                                        "Schema": "public",
+                                        "Alias": "inventory",
+                                        "Startup Cost": 0.0,
+                                        "Total Cost": 3109.76,
+                                        "Plan Rows": 138176,
+                                        "Plan Width": 20,
+                                        "Actual Startup Time": 0.029,
+                                        "Actual Total Time": 67.384,
+                                        "Actual Rows": 117450.0,
+                                        "Actual Loops": 2,
+                                        "Disabled": false,
+                                        "Output": [
+                                          "inventory.inv_quantity_on_hand",
+                                          "inventory.inv_warehouse_sk",
+                                          "inventory.inv_date_sk"
+                                        ],
+                                        "Shared Hit Blocks": 1728,
+                                        "Shared Read Blocks": 0,
+                                        "Shared Dirtied Blocks": 0,
+                                        "Shared Written Blocks": 0,
+                                        "Local Hit Blocks": 0,
+                                        "Local Read Blocks": 0,
+                                        "Local Dirtied Blocks": 0,
+                                        "Local Written Blocks": 0,
+                                        "Temp Read Blocks": 0,
+                                        "Temp Written Blocks": 0,
+                                        "Workers": [
+                                          {
+                                            "Worker Number": 0,
+                                            "Actual Startup Time": 0.022,
+                                            "Actual Total Time": 22.155,
+                                            "Actual Rows": 105883.0,
+                                            "Actual Loops": 1,
+                                            "Shared Hit Blocks": 783,
+                                            "Shared Read Blocks": 0,
+                                            "Shared Dirtied Blocks": 0,
+                                            "Shared Written Blocks": 0,
+                                            "Local Hit Blocks": 0,
+                                            "Local Read Blocks": 0,
+                                            "Local Dirtied Blocks": 0,
+                                            "Local Written Blocks": 0,
+                                            "Temp Read Blocks": 0,
+                                            "Temp Written Blocks": 0
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "Node Type": "Sort",
+                                    "Parent Relationship": "Inner",
+                                    "Parallel Aware": false,
+                                    "Async Capable": false,
+                                    "Startup Cost": 2960.65,
+                                    "Total Cost": 2961.56,
+                                    "Plan Rows": 365,
+                                    "Plan Width": 8,
+                                    "Actual Startup Time": 45.923,
+                                    "Actual Total Time": 48.843,
+                                    "Actual Rows": 23719.0,
+                                    "Actual Loops": 2,
+                                    "Disabled": false,
+                                    "Output": [
+                                      "date_dim.d_date_sk"
+                                    ],
+                                    "Sort Key": [
+                                      "date_dim.d_date_sk"
+                                    ],
+                                    "Sort Method": "quicksort",
+                                    "Sort Space Used": 25,
+                                    "Sort Space Type": "Memory",
+                                    "Shared Hit Blocks": 4064,
+                                    "Shared Read Blocks": 0,
+                                    "Shared Dirtied Blocks": 0,
+                                    "Shared Written Blocks": 0,
+                                    "Local Hit Blocks": 0,
+                                    "Local Read Blocks": 0,
+                                    "Local Dirtied Blocks": 0,
+                                    "Local Written Blocks": 0,
+                                    "Temp Read Blocks": 0,
+                                    "Temp Written Blocks": 0,
+                                    "Workers": [
+                                      {
+                                        "Worker Number": 0,
+                                        "Actual Startup Time": 17.638,
+                                        "Actual Total Time": 20.019,
+                                        "Actual Rows": 37281.0,
+                                        "Actual Loops": 1,
+                                        "Sort Method": "quicksort",
+                                        "Sort Space Used": 25,
+                                        "Sort Space Type": "Memory",
+                                        "Shared Hit Blocks": 2032,
+                                        "Shared Read Blocks": 0,
+                                        "Shared Dirtied Blocks": 0,
+                                        "Shared Written Blocks": 0,
+                                        "Local Hit Blocks": 0,
+                                        "Local Read Blocks": 0,
+                                        "Local Dirtied Blocks": 0,
+                                        "Local Written Blocks": 0,
+                                        "Temp Read Blocks": 0,
+                                        "Temp Written Blocks": 0
+                                      }
+                                    ],
+                                    "Plans": [
+                                      {
+                                        "Node Type": "Seq Scan",
+                                        "Parent Relationship": "Outer",
+                                        "Parallel Aware": false,
+                                        "Async Capable": false,
+                                        "Relation Name": "date_dim",
+                                        "Schema": "public",
+                                        "Alias": "date_dim",
+                                        "Startup Cost": 0.0,
+                                        "Total Cost": 2945.11,
+                                        "Plan Rows": 365,
+                                        "Plan Width": 8,
+                                        "Actual Startup Time": 22.72,
+                                        "Actual Total Time": 45.793,
+                                        "Actual Rows": 365.0,
+                                        "Actual Loops": 2,
+                                        "Disabled": false,
+                                        "Output": [
+                                          "date_dim.d_date_sk"
+                                        ],
+                                        "Filter": "(date_dim.d_year = 2001)",
+                                        "Rows Removed by Filter": 72684,
+                                        "Shared Hit Blocks": 4064,
+                                        "Shared Read Blocks": 0,
+                                        "Shared Dirtied Blocks": 0,
+                                        "Shared Written Blocks": 0,
+                                        "Local Hit Blocks": 0,
+                                        "Local Read Blocks": 0,
+                                        "Local Dirtied Blocks": 0,
+                                        "Local Written Blocks": 0,
+                                        "Temp Read Blocks": 0,
+                                        "Temp Written Blocks": 0,
+                                        "Workers": [
+                                          {
+                                            "Worker Number": 0,
+                                            "Actual Startup Time": 9.277,
+                                            "Actual Total Time": 17.569,
+                                            "Actual Rows": 365.0,
+                                            "Actual Loops": 1,
+                                            "Shared Hit Blocks": 2032,
+                                            "Shared Read Blocks": 0,
+                                            "Shared Dirtied Blocks": 0,
+                                            "Shared Written Blocks": 0,
+                                            "Local Hit Blocks": 0,
+                                            "Local Read Blocks": 0,
+                                            "Local Dirtied Blocks": 0,
+                                            "Local Written Blocks": 0,
+                                            "Temp Read Blocks": 0,
+                                            "Temp Written Blocks": 0
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "Node Type": "Materialize",
+                                "Parent Relationship": "Inner",
+                                "Parallel Aware": false,
+                                "Async Capable": false,
+                                "Startup Cost": 0.0,
+                                "Total Cost": 1.01,
+                                "Plan Rows": 1,
+                                "Plan Width": 28,
+                                "Actual Startup Time": 0.0,
+                                "Actual Total Time": 0.0,
+                                "Actual Rows": 1.0,
+                                "Actual Loops": 46800,
+                                "Disabled": false,
+                                "Output": [
+                                  "warehouse.w_warehouse_name",
+                                  "warehouse.w_warehouse_sk"
+                                ],
+                                "Storage": "Memory",
+                                "Maximum Storage": 17,
+                                "Shared Hit Blocks": 2,
+                                "Shared Read Blocks": 0,
+                                "Shared Dirtied Blocks": 0,
+                                "Shared Written Blocks": 0,
+                                "Local Hit Blocks": 0,
+                                "Local Read Blocks": 0,
+                                "Local Dirtied Blocks": 0,
+                                "Local Written Blocks": 0,
+                                "Temp Read Blocks": 0,
+                                "Temp Written Blocks": 0,
+                                "Workers": [
+                                  {
+                                    "Worker Number": 0,
+                                    "Actual Startup Time": 0.0,
+                                    "Actual Total Time": 0.0,
+                                    "Actual Rows": 1.0,
+                                    "Actual Loops": 36968,
+                                    "Shared Hit Blocks": 1,
+                                    "Shared Read Blocks": 0,
+                                    "Shared Dirtied Blocks": 0,
+                                    "Shared Written Blocks": 0,
+                                    "Local Hit Blocks": 0,
+                                    "Local Read Blocks": 0,
+                                    "Local Dirtied Blocks": 0,
+                                    "Local Written Blocks": 0,
+                                    "Temp Read Blocks": 0,
+                                    "Temp Written Blocks": 0
+                                  }
+                                ],
+                                "Plans": [
+                                  {
+                                    "Node Type": "Seq Scan",
+                                    "Parent Relationship": "Outer",
+                                    "Parallel Aware": false,
+                                    "Async Capable": false,
+                                    "Relation Name": "warehouse",
+                                    "Schema": "public",
+                                    "Alias": "warehouse",
+                                    "Startup Cost": 0.0,
+                                    "Total Cost": 1.01,
+                                    "Plan Rows": 1,
+                                    "Plan Width": 28,
+                                    "Actual Startup Time": 0.933,
+                                    "Actual Total Time": 0.935,
+                                    "Actual Rows": 1.0,
+                                    "Actual Loops": 2,
+                                    "Disabled": false,
+                                    "Output": [
+                                      "warehouse.w_warehouse_name",
+                                      "warehouse.w_warehouse_sk"
+                                    ],
+                                    "Shared Hit Blocks": 2,
+                                    "Shared Read Blocks": 0,
+                                    "Shared Dirtied Blocks": 0,
+                                    "Shared Written Blocks": 0,
+                                    "Local Hit Blocks": 0,
+                                    "Local Read Blocks": 0,
+                                    "Local Dirtied Blocks": 0,
+                                    "Local Written Blocks": 0,
+                                    "Temp Read Blocks": 0,
+                                    "Temp Written Blocks": 0,
+                                    "Workers": [
+                                      {
+                                        "Worker Number": 0,
+                                        "Actual Startup Time": 1.795,
+                                        "Actual Total Time": 1.796,
+                                        "Actual Rows": 1.0,
+                                        "Actual Loops": 1,
+                                        "Shared Hit Blocks": 1,
+                                        "Shared Read Blocks": 0,
+                                        "Shared Dirtied Blocks": 0,
+                                        "Shared Written Blocks": 0,
+                                        "Local Hit Blocks": 0,
+                                        "Local Read Blocks": 0,
+                                        "Local Dirtied Blocks": 0,
+                                        "Local Written Blocks": 0,
+                                        "Temp Read Blocks": 0,
+                                        "Temp Written Blocks": 0
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "Planning": {
+        "Shared Hit Blocks": 0,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0
+      },
+      "Planning Time": 0.258,
+      "Triggers": [],
+      "Execution Time": 947.458
+    }
+  ]
+}

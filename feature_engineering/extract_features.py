@@ -68,7 +68,9 @@ from feature_engineering.plan_parser import (  # noqa: E402
 # ---------------------------------------------------------------------------
 DEFAULT_INPUT_DIRS: tuple[Path, ...] = (
     PROJECT_ROOT / "data" / "raw",
-    PROJECT_ROOT / "data" / "tpch" / "plans",
+    PROJECT_ROOT / "data" / "tpch"  / "plans",
+    PROJECT_ROOT / "data" / "tpch"  / "plans_param",
+    PROJECT_ROOT / "data" / "tpcds" / "plans",
 )
 DEFAULT_OUTPUT_CSV: Path = PROJECT_ROOT / "data" / "processed" / "features.csv"
 
@@ -122,6 +124,27 @@ ADVANCED_COLUMNS: tuple[str, ...] = (
     "sum_temp_written_blocks",
 )
 
+# ---- Phase 3B additions ---------------------------------------------------
+# All columns below are computable strictly from PLAN-TIME information,
+# so they're safe for the realistic regime. They give linear models the
+# log-scale signal they otherwise can't represent and give all models
+# additional plan-shape ratios that are highly correlated with runtime.
+# ---------------------------------------------------------------------------
+LOG_TRANSFORM_COLUMNS: tuple[str, ...] = (
+    "log1p_estimated_total_cost",
+    "log1p_estimated_startup_cost",
+    "log1p_estimated_rows",
+    "log1p_max_subtree_cost",
+    "log1p_total_nodes",
+)
+
+RATIO_COLUMNS: tuple[str, ...] = (
+    "cost_per_estimated_row",       # cost density: how expensive per output row
+    "startup_to_total_ratio",       # how front-loaded is the plan
+    "max_to_root_cost_ratio",       # is there a hot subtree dominating cost
+    "est_rows_per_node",            # average cardinality through the tree
+)
+
 TARGET_COLUMNS: tuple[str, ...] = (
     "target_execution_time_ms",
 )
@@ -132,6 +155,8 @@ ALL_COLUMNS: tuple[str, ...] = (
     + OPERATOR_COUNT_COLUMNS
     + COST_COLUMNS
     + ADVANCED_COLUMNS
+    + LOG_TRANSFORM_COLUMNS
+    + RATIO_COLUMNS
     + TARGET_COLUMNS
 )
 
@@ -205,6 +230,22 @@ def extract_features_from_record(record: dict[str, Any], path: Path) -> dict[str
         root, lambda n: safe_num(n, "Temp Written Blocks"),
     )
 
+    est_total_cost   = safe_num(root, "Total Cost")
+    est_startup_cost = safe_num(root, "Startup Cost")
+    est_rows         = safe_num(root, "Plan Rows")
+
+    import math
+    log1p_est_total   = math.log1p(max(est_total_cost,   0.0))
+    log1p_est_startup = math.log1p(max(est_startup_cost, 0.0))
+    log1p_est_rows    = math.log1p(max(est_rows,         0.0))
+    log1p_max_subtree = math.log1p(max(max_cost,         0.0))
+    log1p_total_nodes = math.log1p(max(total_nodes,      0.0))
+
+    cost_per_row    = est_total_cost / max(est_rows, 1.0)
+    startup_ratio   = (est_startup_cost / est_total_cost) if est_total_cost > 0 else 0.0
+    max_ratio       = (max_cost        / est_total_cost) if est_total_cost > 0 else 1.0
+    rows_per_node   = est_rows / max(float(total_nodes), 1.0)
+
     row: dict[str, Any] = {
         **{k: metadata[k] for k in METADATA_COLUMNS},
 
@@ -217,9 +258,9 @@ def extract_features_from_record(record: dict[str, Any], path: Path) -> dict[str
 
         **counters,
 
-        "estimated_total_cost":   safe_num(root, "Total Cost"),
-        "estimated_startup_cost": safe_num(root, "Startup Cost"),
-        "estimated_rows":         safe_num(root, "Plan Rows"),
+        "estimated_total_cost":   est_total_cost,
+        "estimated_startup_cost": est_startup_cost,
+        "estimated_rows":         est_rows,
         "actual_rows":            safe_num(root, "Actual Rows"),
         "actual_total_time_ms":   safe_num(root, "Actual Total Time"),
         "planning_time_ms":       top_metrics["planning_time_ms"],
@@ -235,6 +276,17 @@ def extract_features_from_record(record: dict[str, Any], path: Path) -> dict[str
         "sum_shared_read_blocks":       sum_read,
         "sum_temp_read_blocks":         sum_temp_read,
         "sum_temp_written_blocks":      sum_temp_write,
+
+        "log1p_estimated_total_cost":   log1p_est_total,
+        "log1p_estimated_startup_cost": log1p_est_startup,
+        "log1p_estimated_rows":         log1p_est_rows,
+        "log1p_max_subtree_cost":       log1p_max_subtree,
+        "log1p_total_nodes":            log1p_total_nodes,
+
+        "cost_per_estimated_row": cost_per_row,
+        "startup_to_total_ratio": startup_ratio,
+        "max_to_root_cost_ratio": max_ratio,
+        "est_rows_per_node":      rows_per_node,
 
         "target_execution_time_ms": top_metrics["execution_time_ms"],
     }
