@@ -44,6 +44,21 @@ from services.ml_service.schemas import (  # noqa: E402
     ServiceInfo,
 )
 
+# ----- Phase 3D: execution loop ------------------------------------------
+from services.exec_service.capture import FeedbackWriter  # noqa: E402
+from services.exec_service.metrics import REGISTRY  # noqa: E402
+from services.exec_service.runner import ExecutionRunner  # noqa: E402
+from services.exec_service.schemas import (  # noqa: E402
+    CandidatePrediction,
+    ExecuteRequest,
+    ExecuteResponse,
+    MetricsSnapshot,
+    OracleVariantResult,
+    RunAndLearnRequest,
+    RunAndLearnResponse,
+)
+from services.plan_generator.pg_variants import VARIANTS  # noqa: E402
+
 
 # ---------------------------------------------------------------------------
 # App lifecycle
@@ -70,7 +85,13 @@ async def lifespan(app: FastAPI):
     pickers: dict[str, PlanPicker] = {r: PlanPicker(p) for r, p in loaded.items()}
     app.state.predictors = loaded
     app.state.pickers    = pickers
+
+    # Phase 3D: execution + feedback writer (process-wide singletons)
+    app.state.feedback_writer = FeedbackWriter()
+    app.state.runner          = ExecutionRunner(writer=app.state.feedback_writer)
+
     print(f"[i] ML service ready; regimes loaded: {list(loaded)}")
+    print(f"[i] Feedback dir: {app.state.feedback_writer.base_dir}")
     yield
 
 
@@ -156,6 +177,9 @@ def predict(req: PredictRequest) -> PredictResponse:
         result = p.predict_one(req.plan_json)
     except Exception as exc:
         raise HTTPException(400, f"prediction failed: {exc}") from exc
+
+    REGISTRY.inc("predictions_total")
+    REGISTRY.observe("inference_latency_ms", result.elapsed_ms)
     return PredictResponse(
         predicted_ms=result.predicted_ms,
         regime=result.regime,
@@ -178,6 +202,9 @@ def plan_pick(req: PlanPickRequest) -> PlanPickResponse:
     finally:
         conn.close()
 
+    REGISTRY.inc("plan_picks_total")
+    REGISTRY.observe("inference_latency_ms", result.elapsed_ms)
+
     def _candidate(c, include_plan: bool) -> PlanCandidate:
         return PlanCandidate(
             variant=c.variant,
@@ -196,6 +223,168 @@ def plan_pick(req: PlanPickRequest) -> PlanPickResponse:
         cache_hit=result.cache_hit,
         elapsed_ms=result.elapsed_ms,
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 3D — execution + feedback
+# ---------------------------------------------------------------------------
+@app.post("/execute", response_model=ExecuteResponse)
+def execute(req: ExecuteRequest) -> ExecuteResponse:
+    """Run a *specific* variant against PG and (optionally) write feedback."""
+    import time
+    import uuid
+    runner: ExecutionRunner = app.state.runner
+
+    knobs = req.knobs
+    if knobs is None:
+        if req.variant not in VARIANTS:
+            raise HTTPException(
+                400,
+                f"unknown variant '{req.variant}'; available: {list(VARIANTS)} "
+                f"(or pass `knobs` explicitly)",
+            )
+        knobs = VARIANTS[req.variant]
+
+    request_id = uuid.uuid4().hex
+    t0 = time.perf_counter()
+    conn = _new_pg_connection()
+    try:
+        res = runner.run_single(
+            conn,
+            sql=req.sql,
+            variant=req.variant,
+            knobs=knobs,
+            statement_timeout_ms=req.statement_timeout_ms,
+            selected_by=req.selected_by,
+            request_id=request_id,
+            write_feedback=req.write_feedback,
+        )
+    finally:
+        conn.close()
+
+    return ExecuteResponse(
+        variant=res.variant,
+        knobs=res.knobs,
+        wall_time_ms=res.wall_time_ms,
+        timed_out=res.timed_out,
+        feedback_path=str(res.feedback_path) if res.feedback_path else None,
+        request_id=request_id,
+        elapsed_ms=(time.perf_counter() - t0) * 1000.0,
+    )
+
+
+@app.post("/run-and-learn", response_model=RunAndLearnResponse)
+def run_and_learn(req: RunAndLearnRequest) -> RunAndLearnResponse:
+    """
+    The full closed loop in one call:
+        SQL  →  generate variants  →  predict each  →  pick winner
+             →  EXECUTE winner   →  capture wall_ms + plan
+             →  write feedback row  →  return everything
+
+    Set `oracle=true` to also execute every other variant for regret
+    analysis (doubles the cost; turn off in production).
+    """
+    import time
+    import uuid
+
+    picker: PlanPicker      = _get_picker_or_404(req.regime)
+    runner: ExecutionRunner = app.state.runner
+    request_id = uuid.uuid4().hex
+
+    conn = _new_pg_connection()
+    t0 = time.perf_counter()
+    try:
+        # ---- Step 1: plan-pick -----------------------------------------
+        pick = picker.pick(conn, req.sql, top_k=len(VARIANTS))
+        candidates = [CandidatePrediction(
+            variant=c.variant, knobs=c.knobs,
+            predicted_ms=c.predicted_ms, estimated_cost=c.estimated_cost,
+        ) for c in pick.candidates]
+
+        REGISTRY.inc("plan_picks_total")
+        REGISTRY.observe("inference_latency_ms", pick.elapsed_ms)
+
+        # ---- Step 2: execute --------------------------------------------
+        if req.oracle:
+            # run every variant; pick is a "hit" if it equals the oracle
+            tuples = [(c.variant, c.knobs, c.predicted_ms) for c in pick.candidates]
+            report = runner.run_with_oracle(
+                conn, sql=req.sql, candidates=tuples,
+                picked_variant=pick.winner.variant,
+                statement_timeout_ms=req.statement_timeout_ms,
+                model_name=picker.predictor.model_name,
+                regime=req.regime, request_id=request_id,
+                write_feedback=req.write_feedback,
+            )
+            picked = report.picked
+            truths = [
+                OracleVariantResult(
+                    variant=v, wall_time_ms=r.wall_time_ms,
+                    timed_out=r.timed_out,
+                ) for v, r in report.truths.items()
+            ]
+            return RunAndLearnResponse(
+                sql_hash=pick.sql_hash, request_id=request_id,
+                regime=req.regime, model_name=picker.predictor.model_name,
+                candidates=candidates,
+                picked_variant=picked.variant,
+                predicted_ms=pick.winner.predicted_ms,
+                actual_wall_ms=picked.wall_time_ms,
+                timed_out=picked.timed_out,
+                feedback_path=str(picked.feedback_path) if picked.feedback_path else None,
+                oracle_variant=report.oracle_variant or None,
+                oracle_wall_ms=report.oracle_wall_ms,
+                regret_ms=report.regret_ms,
+                regret_ratio=report.regret_ratio,
+                plan_pick_hit=report.plan_pick_hit,
+                truths=truths,
+                elapsed_ms=(time.perf_counter() - t0) * 1000.0,
+            )
+
+        # Non-oracle: execute only the picked variant.
+        winner = pick.winner
+        res = runner.run_single(
+            conn,
+            sql=req.sql,
+            variant=winner.variant,
+            knobs=winner.knobs,
+            statement_timeout_ms=req.statement_timeout_ms,
+            predicted_ms=winner.predicted_ms,
+            model_name=picker.predictor.model_name,
+            regime=req.regime,
+            selected_by="ml",
+            request_id=request_id,
+            write_feedback=req.write_feedback,
+        )
+    finally:
+        conn.close()
+
+    return RunAndLearnResponse(
+        sql_hash=pick.sql_hash, request_id=request_id,
+        regime=req.regime, model_name=picker.predictor.model_name,
+        candidates=candidates,
+        picked_variant=res.variant,
+        predicted_ms=winner.predicted_ms,
+        actual_wall_ms=res.wall_time_ms,
+        timed_out=res.timed_out,
+        feedback_path=str(res.feedback_path) if res.feedback_path else None,
+        elapsed_ms=(time.perf_counter() - t0) * 1000.0,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Metrics
+# ---------------------------------------------------------------------------
+@app.get("/metrics")
+def metrics(fmt: str = "json"):
+    """`?fmt=prom` returns Prometheus text exposition; default is JSON."""
+    if fmt == "prom":
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(REGISTRY.prom(), media_type="text/plain; version=0.0.4")
+
+    snap = REGISTRY.json()
+    snap["feedback"] = app.state.feedback_writer.stats()
+    return MetricsSnapshot(**snap)
 
 
 # ---------------------------------------------------------------------------
