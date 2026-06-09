@@ -114,7 +114,10 @@ def _space_lightgbm(trial: optuna.Trial) -> dict[str, Any]:
         "subsample":        trial.suggest_float("subsample",     0.6, 1.0),
         "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
         "reg_lambda":       trial.suggest_float("reg_lambda",    0.1, 10.0, log=True),
-        "min_data_in_leaf": trial.suggest_int("min_data_in_leaf",  1,  20),
+        # NOTE: use sklearn-style name `min_child_samples`. The LightGBM
+        # alias `min_data_in_leaf` is also accepted but emits a "will be
+        # ignored" warning per booster predict() call at inference time.
+        "min_child_samples": trial.suggest_int("min_child_samples", 1, 20),
         "random_state":     RANDOM_STATE,
         "n_jobs":           -1,
         "verbosity":        -1,

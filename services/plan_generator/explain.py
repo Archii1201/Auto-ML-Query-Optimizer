@@ -42,28 +42,58 @@ def _root_total_cost(plan_json: list[dict[str, Any]]) -> float:
         return 0.0
 
 
+# PG error classes that mean "your SQL is broken" — caller wants to see these.
+# Everything else (timeouts, planner refusals, feature unsupported) is benign:
+# we silently skip the variant and let other variants succeed.
+_SQL_USER_ERROR_CLASSES = (
+    "42",  # syntax / access rule (SQL state 42xxx)
+    "3D",  # invalid catalog (3D000)
+    "3F",  # invalid schema name
+    "23",  # integrity constraint violation (rare for SELECT)
+)
+
+
+def _is_user_sql_error(exc: psycopg2.Error) -> bool:
+    """True iff this is the user's SQL being malformed, not a knob problem."""
+    pgcode = getattr(exc, "pgcode", None) or ""
+    return any(pgcode.startswith(cls) for cls in _SQL_USER_ERROR_CLASSES)
+
+
 def generate_variants(
     conn,
     sql: str,
     variants: dict[str, list[str]] | None = None,
+    *,
+    plan_time_timeout_ms: int = 5_000,
 ) -> list[GeneratedPlan]:
     """
-    Produce one plan per variant. Variants that fail (e.g. an
-    optimizer that can't satisfy the request without nestloops)
-    are silently skipped — never raise.
+    Produce one plan per variant. Variants that fail because the
+    optimizer can't satisfy the constraints (e.g. requires nestloops)
+    are silently skipped. SQL-level errors (syntax, missing table)
+    are *raised* so the API can return 4xx instead of an empty list.
+
+    `plan_time_timeout_ms` caps each EXPLAIN to a few seconds so a
+    pathological query can't tie up a request thread.
     """
     variants = variants if variants is not None else VARIANTS
     sql = sql.rstrip().rstrip(";")
     out: list[GeneratedPlan] = []
+    last_user_err: psycopg2.Error | None = None
 
     conn.autocommit = True
     with conn.cursor() as cur:
+        cur.execute(f"SET statement_timeout = {plan_time_timeout_ms};")
         for name, knobs in variants.items():
             _set_knobs(cur, knobs)
+            cur.execute(f"SET statement_timeout = {plan_time_timeout_ms};")
             try:
                 cur.execute(EXPLAIN_PLAN_PREFIX + sql)
                 plan_json = cur.fetchone()[0]
-            except (psycopg2.errors.QueryCanceled, psycopg2.Error):
+            except psycopg2.errors.QueryCanceled:
+                continue
+            except psycopg2.Error as exc:
+                if _is_user_sql_error(exc):
+                    last_user_err = exc
                 continue
             out.append(GeneratedPlan(
                 variant=name,
@@ -71,6 +101,11 @@ def generate_variants(
                 plan_json=plan_json,
                 estimated_cost=_root_total_cost(plan_json),
             ))
+
+    # If *every* variant failed and the cause was a user-SQL error,
+    # propagate it so the caller can return a 422 instead of 500.
+    if not out and last_user_err is not None:
+        raise last_user_err
     return out
 
 

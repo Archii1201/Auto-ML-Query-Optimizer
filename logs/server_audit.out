@@ -1,0 +1,11 @@
+[i] warm-up OK: plan_time (lightgbm_tuned)
+[i] warm-up OK: post_mortem (gradient_boosting_tuned)
+[i] ML service ready; regimes loaded: ['plan_time', 'post_mortem']
+[i] Feedback dir: C:\Users\Dell\OneDrive\Desktop\auto-ml-query-optimizer\data\feedback
+INFO:     127.0.0.1:49738 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49739 - "GET /readyz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49740 - "GET /info?regime=plan_time HTTP/1.1" 200 OK
+[LightGBM] [Warning] min_data_in_leaf is set=4, min_child_samples=20 will be ignored. Current value: min_data_in_leaf=4
+INFO:     127.0.0.1:49741 - "POST /plan-pick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49743 - "POST /plan-pick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49768 - "POST /plan-pick HTTP/1.1" 422 Unprocessable Content

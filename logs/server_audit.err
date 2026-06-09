@@ -1,0 +1,5 @@
+INFO:     Started server process [32512]
+INFO:     Waiting for application startup.
+[inference] WARNING: 10 trained features missing from live extraction; filling with 0. Examples: ['actual_rows', 'actual_total_time_ms', 'wall_time_ms', 'max_actual_loops', 'total_rows_removed_by_filter']
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)

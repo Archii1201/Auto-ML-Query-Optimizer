@@ -25,15 +25,20 @@ from pathlib import Path
 from typing import Any
 
 import psycopg2
-from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+import psycopg2.errors
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from config.db_config import DB_CONFIG  # noqa: E402
 
-from services.ml_service.inference import Predictor, get_predictor  # noqa: E402
+from services.ml_service.inference import (  # noqa: E402
+    InvalidPlanError,
+    Predictor,
+    get_predictor,
+)
 from services.ml_service.plan_pick import PlanPicker  # noqa: E402
 from services.ml_service.schemas import (  # noqa: E402
     PlanCandidate,
@@ -63,6 +68,34 @@ from services.plan_generator.pg_variants import VARIANTS  # noqa: E402
 # ---------------------------------------------------------------------------
 # App lifecycle
 # ---------------------------------------------------------------------------
+# Hard cap on POST body size (10 MiB). Plan JSONs for SF1 TPC-H rarely
+# exceed 200 KiB, so 10 MiB is generous head-room and still protects
+# the server against accidental or malicious giant payloads.
+MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024
+
+
+def _warmup_predictors(predictors: dict[str, Predictor]) -> None:
+    """
+    Touch every predictor with a tiny dummy plan so the first real
+    request doesn't pay the cold-start tax (joblib unpickle, numpy
+    JIT, lightgbm booster init). Failures here are non-fatal.
+    """
+    dummy = [{
+        "Plan": {
+            "Node Type": "Seq Scan", "Total Cost": 1.0, "Startup Cost": 0.0,
+            "Plan Rows": 1, "Plan Width": 4, "Actual Rows": 1,
+        },
+        "Planning Time": 0.1, "Execution Time": 0.1,
+    }]
+    for r, p in predictors.items():
+        try:
+            p.predict_one(dummy)
+            p.cache.clear()  # don't pollute the real cache
+            print(f"[i] warm-up OK: {r} ({p.model_name})")
+        except Exception as exc:
+            print(f"[!] warm-up failed for {r}: {exc}", file=sys.stderr)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -90,6 +123,7 @@ async def lifespan(app: FastAPI):
     app.state.feedback_writer = FeedbackWriter()
     app.state.runner          = ExecutionRunner(writer=app.state.feedback_writer)
 
+    _warmup_predictors(loaded)
     print(f"[i] ML service ready; regimes loaded: {list(loaded)}")
     print(f"[i] Feedback dir: {app.state.feedback_writer.base_dir}")
     yield
@@ -97,9 +131,27 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="AutoML Learned Query Optimizer — ML Service",
-    version="3c.0.0",
+    version="3d.1.0",
     lifespan=lifespan,
 )
+
+
+# ---------------------------------------------------------------------------
+# Middleware: bound request body sizes
+# ---------------------------------------------------------------------------
+@app.middleware("http")
+async def limit_request_size(request: Request, call_next):
+    cl = request.headers.get("content-length")
+    if cl is not None:
+        try:
+            if int(cl) > MAX_REQUEST_BODY_BYTES:
+                return PlainTextResponse(
+                    f"request body exceeds {MAX_REQUEST_BODY_BYTES} bytes",
+                    status_code=413,
+                )
+        except ValueError:
+            pass
+    return await call_next(request)
 
 
 # ---------------------------------------------------------------------------
@@ -175,10 +227,14 @@ def predict(req: PredictRequest) -> PredictResponse:
     p = _get_predictor_or_404(req.regime)
     try:
         result = p.predict_one(req.plan_json)
+    except InvalidPlanError as exc:
+        # 422 = body parsed, but semantically wrong (FastAPI convention).
+        raise HTTPException(422, f"invalid plan_json: {exc}") from exc
     except Exception as exc:
-        raise HTTPException(400, f"prediction failed: {exc}") from exc
+        raise HTTPException(500, f"unexpected inference failure: {exc}") from exc
 
     REGISTRY.inc("predictions_total")
+    REGISTRY.inc("predict_cache_hits_total" if result.cache_hit else "predict_cache_misses_total")
     REGISTRY.observe("inference_latency_ms", result.elapsed_ms)
     return PredictResponse(
         predicted_ms=result.predicted_ms,
@@ -199,10 +255,20 @@ def plan_pick(req: PlanPickRequest) -> PlanPickResponse:
     conn = _new_pg_connection()
     try:
         result = picker.pick(conn, req.sql, top_k=req.top_k)
+    except psycopg2.Error as exc:
+        # `generate_variants` re-raises the PG SQL error when *every*
+        # variant failed for the same user-error reason. Translate to 422.
+        raise HTTPException(
+            422,
+            f"SQL rejected by PostgreSQL ({getattr(exc, 'pgcode', '?')}): {exc}",
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(422, str(exc)) from exc
     finally:
         conn.close()
 
     REGISTRY.inc("plan_picks_total")
+    REGISTRY.inc("plan_pick_cache_hits_total" if result.cache_hit else "plan_pick_cache_misses_total")
     REGISTRY.observe("inference_latency_ms", result.elapsed_ms)
 
     def _candidate(c, include_plan: bool) -> PlanCandidate:
@@ -295,7 +361,15 @@ def run_and_learn(req: RunAndLearnRequest) -> RunAndLearnResponse:
     t0 = time.perf_counter()
     try:
         # ---- Step 1: plan-pick -----------------------------------------
-        pick = picker.pick(conn, req.sql, top_k=len(VARIANTS))
+        try:
+            pick = picker.pick(conn, req.sql, top_k=len(VARIANTS))
+        except psycopg2.Error as exc:
+            raise HTTPException(
+                422,
+                f"SQL rejected by PostgreSQL ({getattr(exc, 'pgcode', '?')}): {exc}",
+            ) from exc
+        except RuntimeError as exc:
+            raise HTTPException(422, str(exc)) from exc
         candidates = [CandidatePrediction(
             variant=c.variant, knobs=c.knobs,
             predicted_ms=c.predicted_ms, estimated_cost=c.estimated_cost,

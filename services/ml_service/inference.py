@@ -23,8 +23,10 @@ Why this file exists separately from server.py:
 
 from __future__ import annotations
 
+import logging
 import sys
 import time
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
@@ -33,6 +35,26 @@ from typing import Any
 import joblib
 import numpy as np
 import pandas as pd
+
+# LightGBM emits a spammy "min_data_in_leaf is set, min_child_samples will
+# be ignored" warning per booster predict() call. It's emitted from the
+# C++ side, so Python's `warnings` module can't catch it; we have to use
+# LightGBM's own logger registry. (The deployed booster was trained with
+# the legacy alias; phase3b/tuning.py now uses the canonical name so future
+# retrains drop the warning entirely.)
+warnings.filterwarnings("ignore", category=UserWarning, module="lightgbm.*")
+logging.getLogger("lightgbm").setLevel(logging.ERROR)
+try:
+    import lightgbm as _lgb
+
+    class _NoisyLgbFilter(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            msg = record.getMessage()
+            return "min_child_samples will be ignored" not in msg
+    _lgb.register_logger(logging.getLogger("lightgbm"))
+    logging.getLogger("lightgbm").addFilter(_NoisyLgbFilter())
+except Exception:
+    pass
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -49,6 +71,10 @@ from services.ml_service.cache import HashedLRUCache, hash_plan  # noqa: E402
 DEFAULT_MODELS_DIR: Path = PROJECT_ROOT / "models" / "phase3b"
 PRED_FLOOR_MS: float = 0.1
 PRED_CEILING_MS: float = 1e7   # 10000 seconds — sanity cap
+
+
+class InvalidPlanError(ValueError):
+    """Raised when the incoming plan_json doesn't match the expected EXPLAIN shape."""
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +106,7 @@ class Predictor:
         self.models_dir: Path = models_dir
         self.cache: HashedLRUCache = HashedLRUCache(capacity=cache_capacity)
         self._lock: Lock = Lock()
+        self._missing_warned: bool = False
 
         artifact_path = models_dir / regime / "automl_best.joblib"
         if not artifact_path.exists():
@@ -140,6 +167,14 @@ class Predictor:
         was trained on. The only adapter we need is to wrap the
         plan in the same record envelope the offline collectors use.
         """
+        if not isinstance(plan_json, list) or not plan_json:
+            raise InvalidPlanError("plan_json must be a non-empty list")
+        if not isinstance(plan_json[0], dict) or "Plan" not in plan_json[0]:
+            raise InvalidPlanError(
+                "plan_json[0] must be the EXPLAIN envelope: "
+                "{'Plan': {...}, 'Planning Time': ..., 'Execution Time': ...}"
+            )
+
         record: dict[str, Any] = {
             "query_id":      "online",
             "variant":       "online",
@@ -149,7 +184,10 @@ class Predictor:
             "wall_time_ms":  0.0,
             "plan":          plan_json,
         }
-        feat_row = extract_features_from_record(record, Path("online.json"))
+        try:
+            feat_row = extract_features_from_record(record, Path("online.json"))
+        except Exception as exc:
+            raise InvalidPlanError(f"feature extraction failed: {exc}") from exc
         X = self._align_features(feat_row)
 
         with self._lock:
@@ -165,7 +203,9 @@ class Predictor:
         """
         Build a 1-row DataFrame whose columns *exactly* match the
         training feature_names. Missing columns are filled with 0
-        (which is the same imputation policy used in training).
+        (the same imputation policy used in training) but are also
+        recorded so /info can report "drift" — the gap between what
+        the live extractor produces and what the trained model expects.
 
         For categoricals (currently just `root_node_type`) we
         hot-encode using the names the model already knows about.
@@ -179,6 +219,17 @@ class Predictor:
             if fname.startswith("root_node_type__"):
                 want = fname.split("__", 1)[1]
                 row[fname] = 1.0 if cat_value == want else 0.0
+
+        # Drift detection: which trained features did the live
+        # extractor *not* produce? Log once per name.
+        missing = [c for c in self.feature_names if c not in row]
+        if missing and not self._missing_warned:
+            print(
+                f"[inference] WARNING: {len(missing)} trained features missing "
+                f"from live extraction; filling with 0. Examples: {missing[:5]}",
+                file=sys.stderr,
+            )
+            self._missing_warned = True
 
         df = pd.DataFrame([row])
         out = pd.DataFrame(index=df.index, columns=self.feature_names, dtype=float)
