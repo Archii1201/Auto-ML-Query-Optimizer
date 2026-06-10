@@ -121,11 +121,13 @@ def get_record_metadata(record: dict[str, Any], path: Path) -> dict[str, Any]:
     CSV row remembers where its features came from.
     """
     return {
-        "source_file":   path.name,
-        "query_id":      record.get("query_id"),
-        "variant":       record.get("variant", "default"),
-        "tag":           record.get("tag"),
-        "sql_hash":      record.get("sql_hash"),
-        "collected_at":  record.get("collected_at"),
-        "wall_time_ms":  float(record.get("wall_time_ms") or 0.0),
+        "source_file":        path.name,
+        "query_id":           record.get("query_id"),
+        "variant":            record.get("variant", "default"),
+        "tag":                record.get("tag"),
+        "sql_hash":           record.get("sql_hash"),
+        "collected_at":       record.get("collected_at"),
+        "wall_time_ms":       float(record.get("wall_time_ms") or 0.0),
+        "target_variance_ms": record.get("target_variance_ms", ""),
+        "label_runs":         record.get("label_runs", ""),
     }

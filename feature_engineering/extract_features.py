@@ -71,6 +71,8 @@ DEFAULT_INPUT_DIRS: tuple[Path, ...] = (
     PROJECT_ROOT / "data" / "tpch"  / "plans",
     PROJECT_ROOT / "data" / "tpch"  / "plans_param",
     PROJECT_ROOT / "data" / "tpcds" / "plans",
+    PROJECT_ROOT / "data" / "job"   / "plans",
+    PROJECT_ROOT / "data" / "feedback",
 )
 DEFAULT_OUTPUT_CSV: Path = PROJECT_ROOT / "data" / "processed" / "features.csv"
 
@@ -86,6 +88,8 @@ METADATA_COLUMNS: tuple[str, ...] = (
     "tag",
     "sql_hash",
     "collected_at",
+    "target_variance_ms",
+    "label_runs",
 )
 
 STRUCTURAL_COLUMNS: tuple[str, ...] = (
@@ -145,6 +149,39 @@ RATIO_COLUMNS: tuple[str, ...] = (
     "est_rows_per_node",            # average cardinality through the tree
 )
 
+# ---- Phase 3E additions ---------------------------------------------------
+# Knob-state features. Derived from the variant name; tells the model
+# WHICH planner toggles were active when this plan was generated. Even
+# when the resulting plan tree is identical across variants (because PG
+# wasn't using that join type anyway), these three booleans give the
+# model a signal it can use during plan-pick.
+# ---------------------------------------------------------------------------
+KNOB_COLUMNS: tuple[str, ...] = (
+    "enable_hashjoin",
+    "enable_mergejoin",
+    "enable_nestloop",
+)
+
+# Cardinality estimation distribution across the whole plan tree.
+# Captured via DFS reduction: for every internal node, we look at
+# Plan Rows (always present) and Actual Rows (only at post-mortem time).
+# Plan-time-safe metrics use only Plan Rows; post-mortem metrics use
+# the ratio of actual / plan rows ("misestimate ratio") which is THE
+# canonical signal for "where the optimizer got the cardinality wrong".
+# ---------------------------------------------------------------------------
+CARDINALITY_COLUMNS: tuple[str, ...] = (
+    # Plan-time-safe (only uses plan_rows)
+    "plan_rows_max_node",            # largest single-node estimated rows
+    "plan_rows_min_nonzero_node",    # smallest non-zero estimate (selectivity floor)
+    "plan_rows_std_to_mean",         # coefficient of variation across nodes
+    "plan_rows_log_range",           # log(max) - log(min); spread on log-scale
+    # Post-mortem only (uses actual_rows; would leak in plan_time)
+    "card_misestimate_max",          # max(actual / max(plan, 1)) over all nodes
+    "card_misestimate_mean",         # mean of the same ratio
+    "card_underest_count",           # nodes where actual / plan > 10 (underestimate)
+    "card_overest_count",            # nodes where plan / max(actual,1) > 10
+)
+
 TARGET_COLUMNS: tuple[str, ...] = (
     "target_execution_time_ms",
 )
@@ -157,8 +194,98 @@ ALL_COLUMNS: tuple[str, ...] = (
     + ADVANCED_COLUMNS
     + LOG_TRANSFORM_COLUMNS
     + RATIO_COLUMNS
+    + KNOB_COLUMNS
+    + CARDINALITY_COLUMNS
     + TARGET_COLUMNS
 )
+
+
+# ---------------------------------------------------------------------------
+# Phase 3E helpers
+# ---------------------------------------------------------------------------
+def derive_knob_state(variant: str) -> dict[str, int]:
+    """
+    Translate the variant name (set when the plan was collected) into
+    three boolean columns. Default = all enabled. The variant naming
+    convention comes from db/tpch_queries.sql + scripts/collect_*_plans.py
+    and matches the knob keys in services/plan_generator/pg_variants.py.
+    """
+    v = (variant or "default").lower()
+    return {
+        "enable_hashjoin":  0 if "no_hashjoin"  in v else 1,
+        "enable_mergejoin": 0 if "no_mergejoin" in v else 1,
+        "enable_nestloop":  0 if "no_nestloop"  in v else 1,
+    }
+
+
+def compute_cardinality_features(root: dict[str, Any]) -> dict[str, float]:
+    """
+    Single DFS pass over the plan tree collecting cardinality metrics.
+
+    Why DFS?  The plan is a tree; we visit every node once, O(N).
+    Why one pass?  We could call reduce_subtree four times for four
+    metrics — but that's 4*N work and re-walks the tree. A single
+    DFS keeps the cost at N and lets us compute mean+std+min+max
+    in one go.
+
+    All ratios are clamped at sensible bounds so a single
+    pathological node can't blow up the feature.
+    """
+    plan_rows_list:    list[float] = []
+    actual_rows_list:  list[float] = []
+    underest = 0      # actual >> plan  (PG underestimated)
+    overest  = 0      # plan   >> actual (PG overestimated)
+
+    for node, _depth, _parent in dfs_iter(root):
+        pr = float(safe_get(node, "Plan Rows", 0) or 0)
+        ar = float(safe_get(node, "Actual Rows", 0) or 0)
+        plan_rows_list.append(pr)
+        actual_rows_list.append(ar)
+        if pr > 0 and ar > 0:
+            ratio = ar / pr
+            if ratio > 10.0:
+                underest += 1
+            elif (1.0 / ratio) > 10.0:
+                overest += 1
+
+    # Plan-time-safe metrics (ignore actual_rows entirely)
+    nonzero_pr = [r for r in plan_rows_list if r > 0]
+    if nonzero_pr:
+        pr_max = max(nonzero_pr)
+        pr_min = min(nonzero_pr)
+        pr_mean = sum(nonzero_pr) / len(nonzero_pr)
+        pr_var  = sum((r - pr_mean) ** 2 for r in nonzero_pr) / len(nonzero_pr)
+        pr_std  = pr_var ** 0.5
+        cv      = pr_std / pr_mean if pr_mean > 0 else 0.0
+
+        import math as _m
+        log_range = _m.log1p(pr_max) - _m.log1p(pr_min)
+    else:
+        pr_max = pr_min = cv = log_range = 0.0
+
+    # Post-mortem metrics (require actual_rows)
+    misest_ratios: list[float] = []
+    for pr, ar in zip(plan_rows_list, actual_rows_list):
+        if pr > 0 and ar > 0:
+            misest_ratios.append(ar / pr)
+    if misest_ratios:
+        m_max = max(misest_ratios)
+        m_mean = sum(misest_ratios) / len(misest_ratios)
+    else:
+        m_max = m_mean = 0.0
+
+    # Bound features so a single 1e9 estimate doesn't dominate.
+    BIG = 1e9
+    return {
+        "plan_rows_max_node":         min(pr_max, BIG),
+        "plan_rows_min_nonzero_node": min(pr_min, BIG),
+        "plan_rows_std_to_mean":      min(cv, 100.0),
+        "plan_rows_log_range":        min(log_range, 30.0),
+        "card_misestimate_max":       min(m_max, BIG),
+        "card_misestimate_mean":      min(m_mean, BIG),
+        "card_underest_count":        float(underest),
+        "card_overest_count":         float(overest),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -246,8 +373,12 @@ def extract_features_from_record(record: dict[str, Any], path: Path) -> dict[str
     max_ratio       = (max_cost        / est_total_cost) if est_total_cost > 0 else 1.0
     rows_per_node   = est_rows / max(float(total_nodes), 1.0)
 
+    # ---- Phase 3E: knob state + cardinality distribution -----------
+    knob_state  = derive_knob_state(metadata.get("variant", "default"))
+    card_state  = compute_cardinality_features(root)
+
     row: dict[str, Any] = {
-        **{k: metadata[k] for k in METADATA_COLUMNS},
+        **{k: metadata.get(k, "") for k in METADATA_COLUMNS},
 
         "tree_depth":     tree_depth,
         "total_nodes":    total_nodes,
@@ -287,6 +418,10 @@ def extract_features_from_record(record: dict[str, Any], path: Path) -> dict[str
         "startup_to_total_ratio": startup_ratio,
         "max_to_root_cost_ratio": max_ratio,
         "est_rows_per_node":      rows_per_node,
+
+        # Phase 3E: knob-state + cardinality features
+        **knob_state,
+        **card_state,
 
         "target_execution_time_ms": top_metrics["execution_time_ms"],
     }
