@@ -465,9 +465,17 @@ def main() -> int:
         cand = cmp_df[(cmp_df["regime"] == regime) & (cmp_df["kind"].isin(["default_ml", "tuned_ml"]))].copy()
         if cand.empty:
             continue
-        # Composite: minimise q-err median, break ties by maximising plan-pick acc.
-        cand["__score__"] = cand["q_error_median_mean"] - 0.1 * cand["plan_pick_acc"].fillna(0.0)
-        winner = cand.sort_values("__score__").iloc[0]
+        # plan_time is deployed for plan-pick; post_mortem is a ceiling check.
+        if regime == "plan_time":
+            winner = cand.sort_values(
+                ["plan_pick_acc", "q_error_median_mean"],
+                ascending=[False, True],
+            ).iloc[0]
+        else:
+            winner = cand.sort_values(
+                ["q_error_median_mean", "plan_pick_acc"],
+                ascending=[True, False],
+            ).iloc[0]
         winner_dict = {
             "regime":  regime,
             "model":   str(winner["model"]),
