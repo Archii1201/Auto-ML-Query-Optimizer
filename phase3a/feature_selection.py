@@ -48,6 +48,8 @@ ID_COLUMNS: tuple[str, ...] = (
     "tag",
     "sql_hash",
     "collected_at",
+    "target_variance_ms",
+    "label_runs",
 )
 
 
@@ -67,6 +69,12 @@ LEAKY_COLUMNS: tuple[str, ...] = (
     "sum_temp_written_blocks",
     "wall_time_ms",
     "target_execution_time_ms",
+    # Phase 3E: cardinality misestimate features rely on Actual Rows,
+    # which is post-execution. Available only in the post_mortem regime.
+    "card_misestimate_max",
+    "card_misestimate_mean",
+    "card_underest_count",
+    "card_overest_count",
 )
 
 
