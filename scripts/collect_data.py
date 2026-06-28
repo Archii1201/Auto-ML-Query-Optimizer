@@ -18,11 +18,13 @@ from __future__ import annotations
 
 import json
 import os
+import statistics
 import sys
 import time
 import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import psycopg2
 
@@ -126,6 +128,49 @@ EXPLAIN_PREFIX = "EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON) "
 # ---------------------------------------------------------------------------
 def short_hash(text: str, length: int = 8) -> str:
     return hashlib.sha1(text.encode("utf-8")).hexdigest()[:length]
+
+
+def aggregate_label_runs(
+    runs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """
+    Phase 3E variance reduction for training labels.
+
+    Run the same (query, variant) multiple times, drop the slowest by
+    ``execution_time_ms``, and use the median of the remainder as the
+    supervised label.  ``target_variance_ms`` captures run-to-run spread
+    across *all* attempts (diagnostic only, never a model feature).
+    """
+    if not runs:
+        raise ValueError("aggregate_label_runs requires at least one run")
+
+    exec_times = [float(r["execution_time_ms"]) for r in runs]
+    variance_all = (
+        statistics.pvariance(exec_times) if len(exec_times) > 1 else 0.0
+    )
+
+    ordered = sorted(runs, key=lambda r: float(r["execution_time_ms"]))
+    kept = ordered[:-1] if len(ordered) >= 3 else ordered
+
+    kept_times = [float(r["execution_time_ms"]) for r in kept]
+    median_exec = float(statistics.median(kept_times))
+
+    best = min(
+        kept,
+        key=lambda r: abs(float(r["execution_time_ms"]) - median_exec),
+    )
+    plan = best["plan_json"]
+    # Patch the envelope so extract_features / plan_parser see the label.
+    plan[0]["Execution Time"] = median_exec
+
+    return {
+        "plan_json":           plan,
+        "wall_time_ms":        round(median_exec, 3),
+        "execution_time_ms":   median_exec,
+        "target_variance_ms":  round(variance_all, 3),
+        "label_runs":          len(runs),
+        "summary":             extract_summary(plan),
+    }
 
 
 def extract_summary(plan_json: list) -> dict:

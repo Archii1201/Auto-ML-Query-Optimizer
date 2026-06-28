@@ -104,9 +104,11 @@ def copy_table(conn, table: str, csv_path: Path) -> None:
     # Binary mode: psycopg2's copy_expert wants a file-like object, and on
     # Windows opening in text mode would translate line endings, which
     # corrupts the byte counts COPY expects.
+    # Fully-qualify with the tpch schema so the load can never land in
+    # public and collide with TPC-DS's `customer` table.
     with csv_path.open("rb") as f, conn.cursor() as cur:
         cur.copy_expert(
-            f"COPY {table} FROM STDIN WITH (FORMAT csv, HEADER true, DELIMITER '|')",
+            f"COPY tpch.{table} FROM STDIN WITH (FORMAT csv, HEADER true, DELIMITER '|')",
             f,
         )
     conn.commit()
@@ -127,7 +129,7 @@ def analyze_all(conn) -> None:
     print("[i] Running ANALYZE on all TPC-H tables ...")
     with conn.cursor() as cur:
         for table in TPCH_TABLES:
-            cur.execute(f"ANALYZE {table};")
+            cur.execute(f"ANALYZE tpch.{table};")
     conn.commit()
     print("[✓] Statistics refreshed.\n")
 

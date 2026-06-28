@@ -80,6 +80,7 @@ class ExecutionRunner:
         statement_timeout_ms: int = 60_000,
         predicted_ms:         float | None = None,
         model_name:           str | None   = None,
+        model_version:        str | None   = None,
         regime:               str | None   = None,
         selected_by:          str = "ml",
         request_id:           str | None = None,
@@ -105,7 +106,8 @@ class ExecutionRunner:
             feedback_path = self.writer.write(
                 sql=sql, variant=variant, knobs=knobs,
                 plan_json=plan_json, wall_time_ms=wall_ms,
-                predicted_ms=predicted_ms, model_name=model_name,
+                predicted_ms=predicted_ms,
+                model_name=model_name, model_version=model_version,
                 regime=regime, selected_by=selected_by,
                 request_id=request_id, tag=tag, extra=extra,
             )
@@ -135,6 +137,7 @@ class ExecutionRunner:
         picked_variant:       str,
         statement_timeout_ms: int = 60_000,
         model_name:           str | None = None,
+        model_version:        str | None = None,
         regime:               str | None = None,
         request_id:           str | None = None,
         write_feedback:       bool = True,
@@ -151,7 +154,8 @@ class ExecutionRunner:
                 conn, sql=sql, variant=variant, knobs=knobs,
                 statement_timeout_ms=statement_timeout_ms,
                 predicted_ms=pred_ms,
-                model_name=model_name, regime=regime,
+                model_name=model_name, model_version=model_version,
+                regime=regime,
                 selected_by=("ml" if variant == picked_variant else "oracle"),
                 request_id=request_id,
                 write_feedback=write_feedback,
@@ -176,6 +180,11 @@ class ExecutionRunner:
         REGISTRY.inc("plan_picks_total")
         if plan_pick_hit:
             REGISTRY.inc("plan_pick_oracle_hits_total")
+        # Regret histogram (ms): how many ms slower than oracle did
+        # the picked variant run? 0 == perfect pick.
+        REGISTRY.observe("regret_ms", float(regret_ms))
+        # Same number expressed as a multiplier (picked / oracle - 1).
+        REGISTRY.observe("regret_ratio", float(regret_ratio))
 
         return OracleReport(
             picked=picked, truths=truths,

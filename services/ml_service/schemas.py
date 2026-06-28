@@ -37,9 +37,16 @@ class PredictRequest(BaseModel):
         EXPLAIN (FORMAT JSON) <sql>
     i.e. a list with one element shaped like
         [{"Plan": {...}, "Planning Time": ..., "Execution Time": ...}]
+
+    `variant` (Phase 3E+) describes which planner knobs were active
+    when the plan was generated. Examples: "default" (all on),
+    "no_hashjoin", "no_mergejoin", "no_nestloop". The model uses
+    these as features so the same plan tree under different knobs
+    can produce different predictions.
     """
     plan_json:  list[dict[str, Any]] = Field(..., min_length=1)
     regime:     str = "plan_time"
+    variant:    str = "default"
 
 
 class PredictResponse(BaseModel):

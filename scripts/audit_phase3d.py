@@ -109,7 +109,7 @@ def check_self_prediction(predictor: Predictor, n_samples: int = 30) -> None:
         actual_ms = float(rec.get("plan", [{}])[0].get("Execution Time", 0.0))
         if actual_ms <= 0:
             continue
-        result = predictor.predict_one(rec["plan"])
+        result = predictor.predict_one(rec["plan"], variant=rec.get("variant", "default"))
         rows.append({
             "file":        p.name,
             "actual_ms":   actual_ms,
@@ -199,7 +199,7 @@ def check_plan_pick_accuracy(predictor: Predictor) -> None:
         actual_ms = float(rec.get("plan", [{}])[0].get("Execution Time", 0.0))
         if not qid or actual_ms <= 0:
             continue
-        pred = predictor.predict_one(rec["plan"])
+        pred = predictor.predict_one(rec["plan"], variant=rec.get("variant", "default"))
         by_qid[qid].append({
             "variant":  rec.get("variant", "default"),
             "actual":   actual_ms,

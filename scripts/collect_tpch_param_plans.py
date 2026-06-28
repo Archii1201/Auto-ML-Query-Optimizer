@@ -21,6 +21,7 @@ Why a separate output directory?
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 import time
@@ -35,7 +36,11 @@ sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from config.db_config import DB_CONFIG  # noqa: E402
-from collect_data import short_hash, extract_summary  # noqa: E402
+from collect_data import (  # noqa: E402
+    aggregate_label_runs,
+    extract_summary,
+    short_hash,
+)
 
 from db.tpch_param_queries import generate as generate_param_queries  # noqa: E402
 
@@ -55,30 +60,65 @@ EXPLAIN_PREFIX = "EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON) "
 STATEMENT_TIMEOUT_MS = 5 * 60 * 1000  # 5 minutes per query
 
 
-def collect_one(cur, query: dict, variant: str, settings: list[str]) -> dict | None:
+def _run_explain(cur, sql: str) -> list | None:
+    try:
+        cur.execute(EXPLAIN_PREFIX + sql)
+        return cur.fetchone()[0]
+    except psycopg2.errors.QueryCanceled:
+        return None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def collect_one(
+    cur,
+    query: dict,
+    variant: str,
+    settings: list[str],
+    *,
+    label_runs: int = 1,
+) -> dict | None:
     sql = query["sql"].rstrip().rstrip(";")
     label = f"{query['id']}/{variant}"
 
     cur.execute("RESET ALL;")
+    # TPC-H tables live in the `tpch` schema (see migrate_to_schemas.py).
+    # RESET ALL clears search_path, so re-set it on every query.
+    cur.execute("SET search_path = tpch, public;")
     cur.execute(f"SET statement_timeout = {STATEMENT_TIMEOUT_MS};")
     for stmt in settings:
         cur.execute(stmt + ";")
 
-    print(f"[*] {label:<32}", end=" ", flush=True)
+    runs_tag = f" x{label_runs}" if label_runs > 1 else ""
+    print(f"[*] {label:<32}{runs_tag}", end=" ", flush=True)
 
-    t0 = time.perf_counter()
-    try:
-        cur.execute(EXPLAIN_PREFIX + sql)
-        plan_json = cur.fetchone()[0]
-    except psycopg2.errors.QueryCanceled:
-        print(f"TIMEOUT (>{STATEMENT_TIMEOUT_MS / 1000:.0f}s)")
-        return None
-    except Exception as exc:  # noqa: BLE001
-        print(f"ERROR: {exc.__class__.__name__}: {exc}")
-        return None
-    wall_ms = (time.perf_counter() - t0) * 1000.0
+    attempts: list[dict] = []
+    for _ in range(max(label_runs, 1)):
+        plan_json = _run_explain(cur, sql)
+        if plan_json is None:
+            print(f"TIMEOUT (>{STATEMENT_TIMEOUT_MS / 1000:.0f}s)")
+            return None
+        summary = extract_summary(plan_json)
+        attempts.append({
+            "plan_json":         plan_json,
+            "execution_time_ms": summary["execution_time_ms"],
+        })
 
-    summary = extract_summary(plan_json)
+    if label_runs > 1:
+        agg = aggregate_label_runs(attempts)
+        plan_json = agg["plan_json"]
+        summary   = agg["summary"]
+        wall_ms   = agg["wall_time_ms"]
+        extra = {
+            "target_variance_ms": agg["target_variance_ms"],
+            "label_runs":         agg["label_runs"],
+        }
+    else:
+        plan_json = attempts[0]["plan_json"]
+        summary   = extract_summary(plan_json)
+        wall_ms   = round(float(summary["execution_time_ms"] or 0.0), 3)
+        extra = {}
+
     record = {
         "query_id":      query["id"],
         "variant":       variant,
@@ -88,9 +128,10 @@ def collect_one(cur, query: dict, variant: str, settings: list[str]) -> dict | N
         "sql":           sql,
         "sql_hash":      short_hash(sql),
         "collected_at":  datetime.now(timezone.utc).isoformat(),
-        "wall_time_ms":  round(wall_ms, 3),
+        "wall_time_ms":  wall_ms,
         "summary":       summary,
         "plan":          plan_json,
+        **extra,
     }
 
     out_path = PLANS_DIR / f"{query['id']}__{variant}__{record['sql_hash']}.json"
@@ -113,13 +154,27 @@ def append_index(record: dict) -> None:
         f.write(json.dumps(line) + "\n")
 
 
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser()
+    p.add_argument(
+        "--label-runs", type=int, default=1,
+        help="Execute each (query, variant) N times, drop slowest, "
+             "median-label the rest (default: 1).",
+    )
+    return p.parse_args()
+
+
 def main() -> int:
+    args = parse_args()
     queries = generate_param_queries()
     n_total = len(queries) * len(VARIANTS)
     print(f"[i] {len(queries)} parameterized queries  x  "
           f"{len(VARIANTS)} variants  =  {n_total} plans to collect")
     print(f"[i] Output dir: {PLANS_DIR}")
-    print(f"[i] Statement timeout: {STATEMENT_TIMEOUT_MS / 1000:.0f}s\n")
+    print(f"[i] Statement timeout: {STATEMENT_TIMEOUT_MS / 1000:.0f}s")
+    if args.label_runs > 1:
+        print(f"[i] Label runs: {args.label_runs} (drop slowest, median label)")
+    print()
 
     try:
         conn = psycopg2.connect(**DB_CONFIG)
@@ -133,7 +188,9 @@ def main() -> int:
         with conn.cursor() as cur:
             for q in queries:
                 for vname, settings in VARIANTS.items():
-                    rec = collect_one(cur, q, vname, settings)
+                    rec = collect_one(
+                        cur, q, vname, settings, label_runs=args.label_runs,
+                    )
                     if rec is None:
                         failed += 1
                         continue

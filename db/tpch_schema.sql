@@ -12,15 +12,22 @@
 -- the optimizer has room to make varied plan choices.
 -- ==========================================================
 
+-- ----- Namespace: keep TPC-H isolated from TPC-DS -----
+-- Both benchmarks define a `customer` table. Loading them into the
+-- same (public) schema makes the second loader silently clobber the
+-- first. We give each benchmark its own schema so names never collide.
+CREATE SCHEMA IF NOT EXISTS tpch;
+SET search_path TO tpch;
+
 -- ----- Clean slate (child-first because of FK chain) -----
-DROP TABLE IF EXISTS lineitem CASCADE;
-DROP TABLE IF EXISTS orders   CASCADE;
-DROP TABLE IF EXISTS partsupp CASCADE;
-DROP TABLE IF EXISTS customer CASCADE;
-DROP TABLE IF EXISTS supplier CASCADE;
-DROP TABLE IF EXISTS part     CASCADE;
-DROP TABLE IF EXISTS nation   CASCADE;
-DROP TABLE IF EXISTS region   CASCADE;
+DROP TABLE IF EXISTS tpch.lineitem CASCADE;
+DROP TABLE IF EXISTS tpch.orders   CASCADE;
+DROP TABLE IF EXISTS tpch.partsupp CASCADE;
+DROP TABLE IF EXISTS tpch.customer CASCADE;
+DROP TABLE IF EXISTS tpch.supplier CASCADE;
+DROP TABLE IF EXISTS tpch.part     CASCADE;
+DROP TABLE IF EXISTS tpch.nation   CASCADE;
+DROP TABLE IF EXISTS tpch.region   CASCADE;
 
 -- ----------------------------------------------------------
 -- region  (5 rows at any SF)

@@ -1,20 +1,11 @@
 {
   "plan_time": {
     "regime": "plan_time",
-    "model": "lightgbm_tuned",
+    "model": "extra_trees_tuned",
     "kind": "tuned_ml",
-    "q_error_median": 1.3936210544491392,
-    "rmse_ms": 9867.030593183948,
-    "r2": 0.5055590235132932,
-    "plan_pick_acc": 0.5075757575757576
-  },
-  "post_mortem": {
-    "regime": "post_mortem",
-    "model": "gradient_boosting_tuned",
-    "kind": "tuned_ml",
-    "q_error_median": 1.0052708247627191,
-    "rmse_ms": 5100.036118929724,
-    "r2": 0.8753357040513748,
-    "plan_pick_acc": 0.9621212121212122
+    "q_error_median": 1.406124891904772,
+    "rmse_ms": 9186.987639610306,
+    "r2": 0.5928591849861882,
+    "plan_pick_acc": 0.48905109489051096
   }
 }

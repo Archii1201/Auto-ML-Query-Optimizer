@@ -37,14 +37,17 @@ def _normalize_sql(sql: str) -> str:
     Cheap canonicalisation for the cache key:
         - collapse whitespace
         - strip trailing semicolons + spaces
-        - lowercase  (we don't care about case for caching)
+
+    NOTE: case is *preserved* — PostgreSQL is case-sensitive for quoted
+    identifiers, so two queries differing only by case can be
+    semantically different and must hash to different keys.
 
     NOTE: this is NOT SQL-aware. Two semantically equivalent queries
     written differently (e.g. column reorder in SELECT, alias
     differences) will hash to different keys. That's acceptable —
     we'd rather have a few cache misses than ever return a wrong plan.
     """
-    return " ".join(sql.split()).rstrip(";").strip().lower()
+    return " ".join(sql.split()).rstrip(";").strip()
 
 
 def hash_sql(sql: str) -> str:

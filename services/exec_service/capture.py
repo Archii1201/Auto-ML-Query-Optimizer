@@ -89,6 +89,7 @@ class FeedbackWriter:
         wall_time_ms:  float,
         predicted_ms:  float | None = None,
         model_name:    str | None   = None,
+        model_version: str | None   = None,
         regime:        str | None   = None,
         selected_by:   str          = "ml",         # "ml" | "default" | "user"
         request_id:    str | None   = None,
@@ -117,10 +118,11 @@ class FeedbackWriter:
                 "request_id":   request_id,
                 "predicted_ms": (round(float(predicted_ms), 3)
                                  if predicted_ms is not None else None),
-                "model_name":   model_name,
-                "regime":       regime,
-                "selected_by":  selected_by,
-                "knobs":        list(knobs),
+                "model_name":    model_name,
+                "model_version": model_version,
+                "regime":        regime,
+                "selected_by":   selected_by,
+                "knobs":         list(knobs),
                 **(extra or {}),
             },
         }
@@ -138,15 +140,16 @@ class FeedbackWriter:
 
         # Append to index (one line per record).
         index_line = {
-            "query_id":     record["query_id"],
-            "variant":      variant,
-            "sql_hash":     sql_hash,
-            "collected_at": ts_iso,
-            "wall_time_ms": record["wall_time_ms"],
-            "predicted_ms": record["online"]["predicted_ms"],
-            "model_name":   model_name,
-            "selected_by":  selected_by,
-            "file":         out_name,
+            "query_id":      record["query_id"],
+            "variant":       variant,
+            "sql_hash":      sql_hash,
+            "collected_at":  ts_iso,
+            "wall_time_ms":  record["wall_time_ms"],
+            "predicted_ms":  record["online"]["predicted_ms"],
+            "model_name":    model_name,
+            "model_version": model_version,
+            "selected_by":   selected_by,
+            "file":          out_name,
         }
         with self._index_lock, self.index_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(index_line) + "\n")

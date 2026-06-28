@@ -125,17 +125,35 @@ class Predictor:
             for k in ("automl_winner", "best_params", "tuner", "n_trials")
             if k in artifact
         }
+        # SHA-256 of the joblib bytes — uniquely identifies this exact
+        # trained model in feedback records, so Phase 5 retraining can
+        # attribute prediction quality to a specific model version.
+        import hashlib as _hashlib
+        self.model_version: str = _hashlib.sha256(
+            artifact_path.read_bytes()
+        ).hexdigest()[:16]
 
     # ------------------------------------------------------------------
-    def predict_one(self, plan_json: list[dict[str, Any]]) -> PredictionResult:
+    def predict_one(
+        self,
+        plan_json: list[dict[str, Any]],
+        *,
+        variant: str = "default",
+    ) -> PredictionResult:
         """
         Run the full inference path on a single plan.
 
         plan_json is the full EXPLAIN (FORMAT JSON) payload (a list with
-        a single wrapping dict). Cache key = SHA-256 of the plan JSON.
+        a single wrapping dict).
+
+        `variant` (Phase 3E) tells the predictor which planner knobs
+        were active when this plan was generated; the model will use
+        those as features. Default is "default" (all knobs on). The
+        cache key incorporates the variant so the same plan tree under
+        different knobs can have different predictions.
         """
         t0 = time.perf_counter()
-        plan_hash = hash_plan(plan_json)
+        plan_hash = hash_plan(plan_json) + f"#{variant}"
 
         cached = self.cache.get(plan_hash)
         if cached is not None:
@@ -147,7 +165,7 @@ class Predictor:
                 elapsed_ms=(time.perf_counter() - t0) * 1000.0,
             )
 
-        ms = self._infer(plan_json)
+        ms = self._infer(plan_json, variant=variant)
         self.cache.set(plan_hash, ms)
         return PredictionResult(
             predicted_ms=ms,
@@ -158,7 +176,7 @@ class Predictor:
         )
 
     # ------------------------------------------------------------------
-    def _infer(self, plan_json: list[dict[str, Any]]) -> float:
+    def _infer(self, plan_json: list[dict[str, Any]], *, variant: str = "default") -> float:
         """
         Plan JSON -> feature row -> aligned X -> y_pred.
 
@@ -177,7 +195,8 @@ class Predictor:
 
         record: dict[str, Any] = {
             "query_id":      "online",
-            "variant":       "online",
+            # variant flows through extract_features.derive_knob_state()
+            "variant":       variant,
             "tag":           "online",
             "sql_hash":      "online",
             "collected_at":  "online",
@@ -243,6 +262,7 @@ class Predictor:
         return {
             "regime":        self.regime,
             "model_name":    self.model_name,
+            "model_version": self.model_version,
             "feature_count": len(self.feature_names),
             "trained_at":    self.trained_at,
             "log_target":    self.log_target,

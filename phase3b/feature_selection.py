@@ -50,6 +50,20 @@ PHASE3B_NEW_COLUMNS: tuple[str, ...] = (
     "est_rows_per_node",
 )
 
+# Phase 3E features. The first three are knob-state booleans
+# derived from the variant name; safe at plan-time. The remainder
+# are *plan-time-safe* cardinality distribution metrics. Misestimate
+# features use Actual Rows and live in LEAKY_COLUMNS instead.
+PHASE3E_NEW_COLUMNS: tuple[str, ...] = (
+    "enable_hashjoin",
+    "enable_mergejoin",
+    "enable_nestloop",
+    "plan_rows_max_node",
+    "plan_rows_min_nonzero_node",
+    "plan_rows_std_to_mean",
+    "plan_rows_log_range",
+)
+
 
 def expected_feature_count(df: pd.DataFrame, regime: str) -> int:
     """Sanity helper for tests — total numeric features per regime."""

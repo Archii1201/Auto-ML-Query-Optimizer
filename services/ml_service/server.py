@@ -89,7 +89,7 @@ def _warmup_predictors(predictors: dict[str, Predictor]) -> None:
     }]
     for r, p in predictors.items():
         try:
-            p.predict_one(dummy)
+            p.predict_one(dummy, variant="default")
             p.cache.clear()  # don't pollute the real cache
             print(f"[i] warm-up OK: {r} ({p.model_name})")
         except Exception as exc:
@@ -226,7 +226,7 @@ def info(regime: str = "plan_time") -> ServiceInfo:
 def predict(req: PredictRequest) -> PredictResponse:
     p = _get_predictor_or_404(req.regime)
     try:
-        result = p.predict_one(req.plan_json)
+        result = p.predict_one(req.plan_json, variant=req.variant)
     except InvalidPlanError as exc:
         # 422 = body parsed, but semantically wrong (FastAPI convention).
         raise HTTPException(422, f"invalid plan_json: {exc}") from exc
@@ -387,6 +387,7 @@ def run_and_learn(req: RunAndLearnRequest) -> RunAndLearnResponse:
                 picked_variant=pick.winner.variant,
                 statement_timeout_ms=req.statement_timeout_ms,
                 model_name=picker.predictor.model_name,
+                model_version=picker.predictor.model_version,
                 regime=req.regime, request_id=request_id,
                 write_feedback=req.write_feedback,
             )
@@ -425,6 +426,7 @@ def run_and_learn(req: RunAndLearnRequest) -> RunAndLearnResponse:
             statement_timeout_ms=req.statement_timeout_ms,
             predicted_ms=winner.predicted_ms,
             model_name=picker.predictor.model_name,
+            model_version=picker.predictor.model_version,
             regime=req.regime,
             selected_by="ml",
             request_id=request_id,

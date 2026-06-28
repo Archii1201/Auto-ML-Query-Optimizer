@@ -31,6 +31,7 @@ the project.
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
@@ -46,7 +47,11 @@ sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from config.db_config import DB_CONFIG          # noqa: E402
-from collect_data import short_hash, extract_summary  # noqa: E402
+from collect_data import (  # noqa: E402
+    aggregate_label_runs,
+    extract_summary,
+    short_hash,
+)
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -117,7 +122,27 @@ def parse_queries(path: Path) -> list[dict]:
 # ---------------------------------------------------------------------------
 # One (query, variant) measurement
 # ---------------------------------------------------------------------------
-def collect_one(cur, query: dict, variant_name: str, settings: list[str]) -> dict | None:
+def _run_explain(cur, sql: str) -> tuple[list, float] | None:
+    """One EXPLAIN (ANALYZE, ...) attempt. Returns (plan_json, wall_ms) or None."""
+    wall_start = time.perf_counter()
+    try:
+        cur.execute(EXPLAIN_PREFIX + sql)
+        plan_json = cur.fetchone()[0]
+    except psycopg2.errors.QueryCanceled:
+        return None
+    except Exception:  # noqa: BLE001
+        return None
+    return plan_json, (time.perf_counter() - wall_start) * 1000.0
+
+
+def collect_one(
+    cur,
+    query: dict,
+    variant_name: str,
+    settings: list[str],
+    *,
+    label_runs: int = 1,
+) -> dict | None:
     """
     Run EXPLAIN (ANALYZE, ...) on `query` under the given optimizer
     `settings`. Returns the JSON record on success, or None on timeout /
@@ -127,25 +152,46 @@ def collect_one(cur, query: dict, variant_name: str, settings: list[str]) -> dic
     label = f"{query['id']}/{variant_name}"
 
     cur.execute("RESET ALL;")
+    # TPC-H tables live in the `tpch` schema (see migrate_to_schemas.py).
+    # RESET ALL clears search_path, so re-set it on every query.
+    cur.execute("SET search_path = tpch, public;")
     cur.execute(f"SET statement_timeout = {STATEMENT_TIMEOUT_MS};")
     for stmt in settings:
         cur.execute(stmt + ";")
 
-    print(f"[•] Running {label:<28} ...", end="", flush=True)
+    runs_tag = f" x{label_runs}" if label_runs > 1 else ""
+    print(f"[•] Running {label:<28}{runs_tag} ...", end="", flush=True)
 
-    wall_start = time.perf_counter()
-    try:
-        cur.execute(EXPLAIN_PREFIX + sql)
-        plan_json = cur.fetchone()[0]
-    except psycopg2.errors.QueryCanceled:
-        print(f"  TIMEOUT (>{STATEMENT_TIMEOUT_MS/1000:.0f}s)")
-        return None
-    except Exception as exc:  # noqa: BLE001
-        print(f"  ERROR: {exc.__class__.__name__}: {exc}")
-        return None
-    wall_ms = (time.perf_counter() - wall_start) * 1000.0
+    attempts: list[dict] = []
+    for _ in range(max(label_runs, 1)):
+        result = _run_explain(cur, sql)
+        if result is None:
+            print(f"  TIMEOUT (>{STATEMENT_TIMEOUT_MS/1000:.0f}s)")
+            return None
+        plan_json, _wall_ms = result
+        summary = extract_summary(plan_json)
+        attempts.append({
+            "plan_json":         plan_json,
+            "execution_time_ms": summary["execution_time_ms"],
+        })
 
-    summary = extract_summary(plan_json)
+    if label_runs > 1:
+        agg = aggregate_label_runs(attempts)
+        plan_json = agg["plan_json"]
+        summary   = agg["summary"]
+        wall_ms   = agg["wall_time_ms"]
+        extra = {
+            "target_variance_ms": agg["target_variance_ms"],
+            "label_runs":         agg["label_runs"],
+        }
+    else:
+        plan_json = attempts[0]["plan_json"]
+        summary   = extract_summary(plan_json)
+        wall_ms   = round(
+            float(summary["execution_time_ms"] or 0.0), 3,
+        )
+        extra = {}
+
     record = {
         "query_id":      query["id"],
         "variant":       variant_name,
@@ -154,9 +200,10 @@ def collect_one(cur, query: dict, variant_name: str, settings: list[str]) -> dic
         "sql":           sql,
         "sql_hash":      short_hash(sql),
         "collected_at":  datetime.now(timezone.utc).isoformat(),
-        "wall_time_ms":  round(wall_ms, 3),
+        "wall_time_ms":  wall_ms,
         "summary":       summary,
         "plan":          plan_json,
+        **extra,
     }
 
     out_path = (
@@ -188,12 +235,25 @@ def append_index(record: dict) -> None:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser()
+    p.add_argument(
+        "--label-runs", type=int, default=1,
+        help="Execute each (query, variant) N times, drop slowest, "
+             "median-label the rest (default: 1 = single run).",
+    )
+    return p.parse_args()
+
+
 def main() -> int:
+    args = parse_args()
     queries = parse_queries(QUERIES_FILE)
     print(f"[i] Loaded {len(queries)} TPC-H queries from "
           f"{QUERIES_FILE.relative_to(PROJECT_ROOT)}")
     print(f"[i] Variants: {', '.join(VARIANTS.keys())}")
     print(f"[i] Per-query timeout: {STATEMENT_TIMEOUT_MS/1000:.0f}s")
+    if args.label_runs > 1:
+        print(f"[i] Label runs: {args.label_runs} (drop slowest, median label)")
     print(
         f"[i] Connecting to postgres://{DB_CONFIG['user']}@"
         f"{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['dbname']}\n"
@@ -211,7 +271,10 @@ def main() -> int:
         with conn.cursor() as cur:
             for query in queries:
                 for variant_name, settings in VARIANTS.items():
-                    record = collect_one(cur, query, variant_name, settings)
+                    record = collect_one(
+                        cur, query, variant_name, settings,
+                        label_runs=args.label_runs,
+                    )
                     if record is None:
                         failed += 1
                         continue

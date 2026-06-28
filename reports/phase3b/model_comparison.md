@@ -11,47 +11,25 @@ Columns:
 
 ## AutoML winners
 
-- **plan_time**: `lightgbm_tuned` (q-err med = 1.39, plan-pick acc = 0.5075757575757576)
-- **post_mortem**: `gradient_boosting_tuned` (q-err med = 1.01, plan-pick acc = 0.9621212121212122)
+- **plan_time**: `extra_trees_tuned` (q-err med = 1.41, plan-pick acc = 0.48905109489051096)
 
 ## Regime: `plan_time`
 
 | regime    | kind       | model                   |       R² |   MAE (ms) |   RMSE (ms) |   q-err median |   q-err p95 |   Spearman ρ |   plan-pick acc |   regret (ms) |   Train (s) |
 |:----------|:-----------|:------------------------|---------:|-----------:|------------:|---------------:|------------:|-------------:|----------------:|--------------:|------------:|
-| plan_time | tuned_ml   | lightgbm_tuned          |    0.506 |    2940.3  |     9867.03 |          1.394 |       3.257 |        0.894 |           0.508 |       586.62  |      23.226 |
-| plan_time | tuned_ml   | gradient_boosting_tuned |    0.5   |    2918.21 |     9993.96 |          1.406 |       3.322 |        0.892 |           0.477 |      2752.64  |      10.891 |
-| plan_time | tuned_ml   | extra_trees_tuned       |    0.533 |    2886.9  |     9605.9  |          1.407 |       3.679 |        0.892 |           0.485 |       412.247 |      51.742 |
-| plan_time | tuned_ml   | random_forest_tuned     |    0.516 |    2911.5  |     9816.08 |          1.408 |       3.609 |        0.899 |           0.477 |      2650.49  |       6.473 |
-| plan_time | default_ml | gradient_boosting       |    0.477 |    3029.98 |    10067.5  |          1.418 |       3.717 |        0.886 |           0.455 |       685.625 |      16.621 |
-| plan_time | tuned_ml   | xgboost_tuned           |    0.505 |    2954.13 |     9865.55 |          1.42  |       3.898 |        0.889 |           0.485 |       629.745 |      13.703 |
-| plan_time | default_ml | catboost                |    0.484 |    3034.47 |    10083.4  |          1.43  |       3.378 |        0.887 |           0.447 |      2794.92  |      29.684 |
-| plan_time | default_ml | random_forest           |    0.501 |    3058.46 |     9941.2  |          1.457 |       3.79  |        0.883 |           0.455 |       745.897 |       6.497 |
-| plan_time | default_ml | xgboost                 |    0.477 |    3090.83 |    10091.1  |          1.466 |       3.741 |        0.878 |           0.455 |       699.613 |      11.94  |
-| plan_time | default_ml | extra_trees             |    0.488 |    3205.68 |     9988.87 |          1.485 |       3.368 |        0.867 |           0.394 |       686.555 |       9.392 |
-| plan_time | default_ml | lightgbm                |    0.449 |    3273.91 |    10314.8  |          1.496 |       3.733 |        0.872 |           0.47  |       781.55  |      33.626 |
-| plan_time | default_ml | lasso                   | -180.501 |    9697.92 |    65272.5  |          1.643 |      29.175 |        0.73  |           0.333 |      3138.22  |       0.427 |
-| plan_time | baseline   | pg_baseline_loglinear   |    0.055 |    4587.92 |    11561.2  |          1.645 |       8.938 |        0.568 |           0.205 |      4366.26  |       0.067 |
-| plan_time | default_ml | elasticnet              | -180.489 |    9681.89 |    65236.5  |          1.659 |      28.68  |        0.728 |           0.356 |      3067.45  |       0.462 |
-| plan_time | default_ml | ridge                   | -180.45  |    9646.2  |    65096    |          1.664 |      20.67  |        0.718 |           0.326 |      3217.67  |       0.11  |
-| plan_time | baseline   | pg_baseline_linear      |    0.049 |    4666.96 |    10392.4  |          1.786 |       8.346 |        0.568 |           0.205 |      4366.26  |       0.106 |
-
-## Regime: `post_mortem`
-
-| regime      | kind       | model                   |      R² |   MAE (ms) |   RMSE (ms) |   q-err median |   q-err p95 |   Spearman ρ |   plan-pick acc |   regret (ms) |   Train (s) |
-|:------------|:-----------|:------------------------|--------:|-----------:|------------:|---------------:|------------:|-------------:|----------------:|--------------:|------------:|
-| post_mortem | tuned_ml   | gradient_boosting_tuned |   0.875 |    586.172 |     5100.04 |          1.005 |       1.104 |        1     |           0.962 |         3.304 |      71.977 |
-| post_mortem | default_ml | gradient_boosting       |   0.872 |    580.785 |     4955.15 |          1.008 |       1.103 |        1     |           0.947 |         0.74  |      27.937 |
-| post_mortem | default_ml | random_forest           |   0.875 |    580.21  |     4974.43 |          1.008 |       1.226 |        1     |           0.977 |         0.166 |      54.253 |
-| post_mortem | tuned_ml   | random_forest_tuned     |   0.858 |    653.484 |     5431.73 |          1.008 |       1.54  |        1     |           0.97  |         0.157 |      80.067 |
-| post_mortem | tuned_ml   | extra_trees_tuned       |   0.843 |    642.135 |     5482.44 |          1.008 |       1.238 |        0.999 |           0.97  |         0.637 |      82.825 |
-| post_mortem | default_ml | extra_trees             |   0.842 |    646.666 |     5494.6  |          1.008 |       1.234 |        0.999 |           0.985 |         0.123 |      52.599 |
-| post_mortem | tuned_ml   | xgboost_tuned           |   0.873 |    622.452 |     5060.14 |          1.011 |       1.178 |        1     |           0.962 |         3.069 |      37.377 |
-| post_mortem | default_ml | lightgbm                |   0.869 |    689.782 |     5283.42 |          1.011 |       1.156 |        0.999 |           0.955 |        10.991 |     122.135 |
-| post_mortem | default_ml | xgboost                 |   0.887 |    580.402 |     4694.84 |          1.013 |       1.215 |        1     |           0.947 |         2.922 |      13.14  |
-| post_mortem | tuned_ml   | lightgbm_tuned          |   0.862 |    784.758 |     5463.99 |          1.023 |       1.21  |        0.999 |           0.939 |        11.642 |     135.591 |
-| post_mortem | default_ml | catboost                |   0.822 |    911.903 |     6164.64 |          1.042 |       1.444 |        0.997 |           0.947 |        13.3   |      74.329 |
-| post_mortem | default_ml | lasso                   | -20.436 |   8310.89  |    66708.2  |          1.353 |       3.828 |        0.926 |           0.689 |       335.716 |       5.343 |
-| post_mortem | default_ml | elasticnet              | -20.483 |   8331.97  |    66791.5  |          1.353 |       4.472 |        0.923 |           0.689 |       335.692 |       2.021 |
-| post_mortem | default_ml | ridge                   | -20.303 |   8306.5   |    66506    |          1.361 |       7.421 |        0.921 |           0.697 |       335.564 |       0.675 |
-| post_mortem | baseline   | pg_baseline_loglinear   |   0.055 |   4587.92  |    11561.2  |          1.645 |       8.938 |        0.568 |           0.205 |      4366.26  |       1.005 |
-| post_mortem | baseline   | pg_baseline_linear      |   0.049 |   4666.96  |    10392.4  |          1.786 |       8.346 |        0.568 |           0.205 |      4366.26  |       0.411 |
+| plan_time | tuned_ml   | extra_trees_tuned       |    0.593 |    2826.5  |     9186.99 |          1.406 |       3.824 |        0.881 |           0.489 |       365.125 |      26.215 |
+| plan_time | tuned_ml   | random_forest_tuned     |    0.565 |    2806.02 |     9472.96 |          1.434 |       3.508 |        0.884 |           0.511 |       355.756 |       6.34  |
+| plan_time | tuned_ml   | xgboost_tuned           |    0.614 |    2736.76 |     8929.65 |          1.438 |       3.924 |        0.889 |           0.518 |       442.027 |      16.421 |
+| plan_time | default_ml | xgboost                 |    0.579 |    2899.48 |     9207.61 |          1.441 |       3.993 |        0.879 |           0.423 |       602.283 |       8.25  |
+| plan_time | tuned_ml   | gradient_boosting_tuned |    0.538 |    2943.02 |     9671.23 |          1.448 |       3.515 |        0.874 |           0.438 |       559.341 |      34.553 |
+| plan_time | default_ml | random_forest           |    0.584 |    2877.69 |     9227.56 |          1.451 |       3.468 |        0.879 |           0.438 |       628.103 |      17.497 |
+| plan_time | default_ml | gradient_boosting       |    0.556 |    2848.33 |     9323.46 |          1.455 |       3.396 |        0.882 |           0.46  |       537.935 |      23.842 |
+| plan_time | default_ml | catboost                |    0.608 |    2797.95 |     8992.82 |          1.457 |       3.628 |        0.886 |           0.445 |       550.841 |      19.409 |
+| plan_time | tuned_ml   | lightgbm_tuned          |    0.572 |    2968.98 |     9303.76 |          1.461 |       3.864 |        0.881 |           0.431 |       640.208 |     150.488 |
+| plan_time | default_ml | extra_trees             |    0.549 |    3050.84 |     9477.37 |          1.494 |       4.04  |        0.867 |           0.46  |       643.758 |      10.264 |
+| plan_time | default_ml | lightgbm                |    0.519 |    3094.18 |     9554.24 |          1.535 |       3.77  |        0.86  |           0.423 |       739.136 |      43.569 |
+| plan_time | default_ml | elasticnet              | -142.68  |    8981.48 |    63327    |          1.63  |       5.642 |        0.767 |           0.365 |      2877.95  |       0.756 |
+| plan_time | default_ml | ridge                   | -142.697 |    8999.28 |    63351.3  |          1.631 |       5.54  |        0.764 |           0.401 |      2878.61  |       0.135 |
+| plan_time | default_ml | lasso                   | -142.655 |    8931.38 |    63291.7  |          1.634 |       5.62  |        0.766 |           0.343 |      2883.41  |       1.207 |
+| plan_time | baseline   | pg_baseline_loglinear   |    0.049 |    4487.22 |    11609.6  |          1.696 |      10.491 |        0.578 |           0.197 |      4223.05  |       0.06  |
+| plan_time | baseline   | pg_baseline_linear      |    0.046 |    4629.07 |    10250.6  |          1.882 |       8.876 |        0.578 |           0.197 |      4223.05  |       0.062 |

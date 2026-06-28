@@ -99,7 +99,9 @@ class PlanPicker:
 
         scored: list[RankedCandidate] = []
         for p in plans:
-            pred = self.predictor.predict_one(p.plan_json)
+            # Pass variant so the predictor sees the correct knob-state
+            # features. Required since Phase 3E for plan differentiation.
+            pred = self.predictor.predict_one(p.plan_json, variant=p.variant)
             scored.append(RankedCandidate(
                 variant=p.variant,
                 knobs=p.knobs,

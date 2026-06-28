@@ -48,6 +48,9 @@ def collect_one(cur, query: dict, variant: str, settings: list[str]) -> dict | N
     label = f"{query['id']}/{variant}"
 
     cur.execute("RESET ALL;")
+    # TPC-DS tables live in the `tpcds` schema (see migrate_to_schemas.py).
+    # RESET ALL clears search_path, so re-set it on every query.
+    cur.execute("SET search_path = tpcds, public;")
     cur.execute(f"SET statement_timeout = {STATEMENT_TIMEOUT_MS};")
     for stmt in settings:
         cur.execute(stmt + ";")

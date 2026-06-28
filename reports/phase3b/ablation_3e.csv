@@ -1,0 +1,17 @@
+subset,model,n_features,plan_pick,groups,regret_ms,q_err_med
+B3_all_3E (current),extra_trees,51,0.4672,137,523.7,1.4476
+B3_all_3E (current),random_forest,51,0.4818,137,401.9,1.4449
+B3_all_3E (current),xgboost,51,0.438,137,590.4,1.4693
+B3_all_3E (current),lightgbm,51,0.4453,137,540.9,1.456
+B0_baseline_44,extra_trees,44,0.4818,137,431.0,1.452
+B0_baseline_44,random_forest,44,0.4672,137,563.8,1.4555
+B0_baseline_44,xgboost,44,0.4161,137,587.5,1.5184
+B0_baseline_44,lightgbm,44,0.4672,137,712.4,1.501
+B1_knob_only,extra_trees,47,0.4599,137,530.0,1.4559
+B1_knob_only,random_forest,47,0.4818,137,589.4,1.4533
+B1_knob_only,xgboost,47,0.4307,137,782.9,1.494
+B1_knob_only,lightgbm,47,0.4307,137,554.5,1.4813
+B2_planrows_only,extra_trees,48,0.5036,137,420.9,1.445
+B2_planrows_only,random_forest,48,0.438,137,446.4,1.452
+B2_planrows_only,xgboost,48,0.4526,137,574.7,1.4935
+B2_planrows_only,lightgbm,48,0.4599,137,568.0,1.4708

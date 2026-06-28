@@ -25,6 +25,8 @@ histograms (kept as a bounded ring buffer of recent observations):
     execution_latency_ms           actual SQL execution times
     pred_actual_ratio              predicted_ms / actual_ms per pred-pair
                                    (1.0 = perfect, >1 = over-estimate)
+    regret_ms                      extra time paid vs. oracle (plan-pick)
+                                   when /run-and-learn oracle mode is on
 
 We expose:
     .json()  →  dict of everything (used by /metrics)
