@@ -131,11 +131,22 @@ def evaluate_model(df, model_name, model) -> dict:
 
 
 def main() -> int:
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--id-regex", default=None,
+                    help="keep only query_id matching this regex "
+                         r"(e.g. '^q\d\d' for TPC-H only)")
+    args = ap.parse_args()
+
     if not FEATURES_CSV.exists():
         print(f"[!] {FEATURES_CSV} not found — run extract_features first.",
               file=sys.stderr)
         return 1
     df = pd.read_csv(FEATURES_CSV)
+    if args.id_regex:
+        before = len(df)
+        df = df[df["query_id"].astype(str).str.match(args.id_regex)].reset_index(drop=True)
+        print(f"[i] filtered query_id ~ /{args.id_regex}/: {before} -> {len(df)} rows")
     print(f"[i] features.csv: {len(df)} rows, {df['query_id'].nunique()} groups\n")
 
     models = make_models()

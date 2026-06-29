@@ -169,14 +169,36 @@ def validate_plans(plans_dir: Path) -> Report:
         rep.ok("all files have required keys")
 
     # ---- coverage vs. generator ----
+    # A variant can be legitimately absent if it timed out (e.g. forcing
+    # no_nestloop produces a catastrophic plan > statement_timeout). That
+    # is acceptable for plan-pick *as long as* every query keeps >=2
+    # variants to choose between. So we only HARD-fail when a group drops
+    # below 2 variants, or when too much data is missing overall.
+    MISSING_TOLERANCE = 0.05  # up to 5% timed-out variants is fine
     expected_qids = {q["id"] for q in generate_param_queries()}
     expected_pairs = {(qid, v) for qid in expected_qids for v in VARIANTS}
     collected_pairs = set(seen_pairs.keys())
     missing = expected_pairs - collected_pairs
     extra = collected_pairs - expected_pairs
     rep.ok(f"{len(collected_pairs)}/{len(expected_pairs)} expected (query,variant) pairs collected")
-    if missing:
-        rep.fail(f"{len(missing)} missing pairs, e.g. {sorted(missing)[:6]}")
+
+    per_qid_variants: defaultdict[str, set] = defaultdict(set)
+    for (qid, v) in collected_pairs:
+        per_qid_variants[qid].add(v)
+    unusable = sorted(qid for qid in expected_qids
+                      if len(per_qid_variants.get(qid, set())) < 2)
+    missing_frac = len(missing) / max(len(expected_pairs), 1)
+
+    if unusable:
+        rep.fail(f"{len(unusable)} queries have <2 variants (no plan-pick "
+                 f"choice): {unusable[:6]}")
+    elif missing and missing_frac <= MISSING_TOLERANCE:
+        rep.warn(f"{len(missing)} variants absent (timed out), "
+                 f"{missing_frac:.1%} <= {MISSING_TOLERANCE:.0%} tolerance; "
+                 f"all queries keep >=2 variants. e.g. {sorted(missing)[:4]}")
+    elif missing:
+        rep.fail(f"{len(missing)} missing pairs ({missing_frac:.1%} > "
+                 f"{MISSING_TOLERANCE:.0%} tolerance): {sorted(missing)[:6]}")
     else:
         rep.ok("no missing (query,variant) pairs")
     if extra:
@@ -249,15 +271,24 @@ def validate_features(csv_path: Path) -> Report:
     df = pd.read_csv(csv_path)
     rep.ok(f"shape: {df.shape[0]} rows x {df.shape[1]} columns")
 
-    n_nan = int(df.isna().sum().sum())
+    # ID / metadata columns are dropped before training, so NaN in them
+    # (e.g. label_runs / target_variance_ms only exist for multi-run
+    # collections) is cosmetic, not a training hazard. We police NaN only
+    # in the *feature* columns + the target.
+    META_COLS = ("query_id", "variant", "tag", "sql_hash", "source_file",
+                 "collected_at", "target_variance_ms", "label_runs")
+    feat_cols = [c for c in df.columns
+                 if c not in META_COLS and c != "execution_time_ms"]
+
+    n_nan_feat = int(df[feat_cols + ["execution_time_ms"]].isna().sum().sum())
+    n_nan_meta = int(df[[c for c in META_COLS if c in df.columns]].isna().sum().sum())
     n_inf = int((df.select_dtypes("number").abs() == float("inf")).sum().sum())
-    (rep.ok if n_nan == 0 else rep.fail)(f"{n_nan} NaN cells")
+    (rep.ok if n_nan_feat == 0 else rep.fail)(f"{n_nan_feat} NaN cells in feature/target columns")
+    if n_nan_meta:
+        rep.warn(f"{n_nan_meta} NaN cells in optional metadata "
+                 f"(label_runs/target_variance_ms for single-run plans) — ignored")
     (rep.ok if n_inf == 0 else rep.fail)(f"{n_inf} inf cells")
 
-    feat_cols = [c for c in df.columns
-                 if c not in ("query_id", "variant", "tag", "sql_hash",
-                              "source_file", "collected_at", "target_variance_ms",
-                              "label_runs", "execution_time_ms")]
     dup = int(df.duplicated(subset=feat_cols).sum())
     (rep.ok if dup == 0 else rep.warn)(f"{dup} duplicate feature vectors")
 

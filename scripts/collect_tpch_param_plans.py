@@ -161,6 +161,11 @@ def parse_args() -> argparse.Namespace:
         help="Execute each (query, variant) N times, drop slowest, "
              "median-label the rest (default: 1).",
     )
+    p.add_argument(
+        "--resume", action="store_true",
+        help="Skip (query, variant) pairs whose output JSON already "
+             "exists. Lets an interrupted run continue where it stopped.",
+    )
     return p.parse_args()
 
 
@@ -183,11 +188,19 @@ def main() -> int:
         return 1
     conn.autocommit = True
 
-    ok, failed = 0, 0
+    ok, failed, skipped = 0, 0, 0
     try:
         with conn.cursor() as cur:
             for q in queries:
                 for vname, settings in VARIANTS.items():
+                    if args.resume:
+                        sql = q["sql"].rstrip().rstrip(";")
+                        out_path = PLANS_DIR / (
+                            f"{q['id']}__{vname}__{short_hash(sql)}.json"
+                        )
+                        if out_path.exists():
+                            skipped += 1
+                            continue
                     rec = collect_one(
                         cur, q, vname, settings, label_runs=args.label_runs,
                     )
@@ -199,7 +212,8 @@ def main() -> int:
     finally:
         conn.close()
 
-    print(f"\n[OK] Done. {ok}/{n_total} plans captured, {failed} failed/timeout.")
+    print(f"\n[OK] Done. {ok}/{n_total} plans captured, {failed} failed/timeout, "
+          f"{skipped} skipped (already present).")
     print(f"[OK] Plans -> {PLANS_DIR}")
     print(f"[OK] Index -> {INDEX_FILE}")
     return 0 if failed == 0 else 2
