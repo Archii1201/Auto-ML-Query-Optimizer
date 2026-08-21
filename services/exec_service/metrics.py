@@ -36,11 +36,72 @@ We expose:
 from __future__ import annotations
 
 import math
+import os
 import time
 from collections import deque
 from dataclasses import dataclass, field
 from threading import Lock
 from typing import Any, Iterable
+
+
+# ---------------------------------------------------------------------------
+# Phase 4D: optional Prometheus mirror.
+#
+# We keep the homegrown registry (it powers the JSON /metrics and needs no
+# deps) but *also* mirror every inc()/observe() into prometheus_client when
+# it's installed. That gives `/metrics?fmt=prom` real, properly-typed
+# Prometheus output (histograms with buckets) that Grafana/Prometheus
+# scrape natively — without touching a single call site.
+# ---------------------------------------------------------------------------
+class _PromMirror:
+    # Buckets tuned for millisecond latencies (1ms .. ~30s).
+    _MS_BUCKETS = (1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000)
+
+    def __init__(self) -> None:
+        self.enabled = False
+        if os.environ.get("PROMETHEUS_ENABLED", "true").strip().lower() == "false":
+            return
+        try:
+            from prometheus_client import CollectorRegistry, Counter, Histogram
+            self._Counter = Counter
+            self._Histogram = Histogram
+            self.registry = CollectorRegistry()
+            self._counters: dict[str, Any] = {}
+            self._hists: dict[str, Any] = {}
+            self.enabled = True
+        except Exception:  # noqa: BLE001 — prometheus_client not installed
+            self.enabled = False
+
+    def inc(self, name: str, by: int) -> None:
+        if not self.enabled:
+            return
+        try:
+            c = self._counters.get(name)
+            if c is None:
+                # prometheus_client appends _total itself; strip to avoid dupes.
+                base = name[:-6] if name.endswith("_total") else name
+                c = self._Counter(base, name, registry=self.registry)
+                self._counters[name] = c
+            c.inc(by)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def observe(self, name: str, value: float) -> None:
+        if not self.enabled:
+            return
+        try:
+            h = self._hists.get(name)
+            if h is None:
+                buckets = self._MS_BUCKETS if name.endswith("_ms") else self._Histogram.DEFAULT_BUCKETS
+                h = self._Histogram(name, name, buckets=buckets, registry=self.registry)
+                self._hists[name] = h
+            h.observe(value)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def generate(self) -> bytes:
+        from prometheus_client import generate_latest
+        return generate_latest(self.registry)
 
 
 # ---------------------------------------------------------------------------
@@ -91,11 +152,21 @@ class MetricsRegistry:
         self._counters: dict[str, int]   = {}
         self._hists:    dict[str, Histogram] = {}
         self._started_at: float = time.time()
+        self._prom = _PromMirror()
+
+    @property
+    def prometheus_enabled(self) -> bool:
+        return self._prom.enabled
+
+    def prometheus_text(self) -> bytes:
+        """Native Prometheus exposition via prometheus_client."""
+        return self._prom.generate()
 
     # -- counters ----------------------------------------------------------
     def inc(self, name: str, by: int = 1) -> None:
         with self._lock:
             self._counters[name] = self._counters.get(name, 0) + by
+        self._prom.inc(name, by)
 
     def get_counter(self, name: str) -> int:
         with self._lock:
@@ -107,6 +178,7 @@ class MetricsRegistry:
             if name not in self._hists:
                 self._hists[name] = Histogram(name=name)
             self._hists[name].observe(value)
+        self._prom.observe(name, value)
 
     # -- exporters ---------------------------------------------------------
     def json(self) -> dict[str, Any]:

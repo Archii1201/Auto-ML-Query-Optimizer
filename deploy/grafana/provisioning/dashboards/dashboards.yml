@@ -1,0 +1,13 @@
+# Phase 4D — Grafana dashboard provider. Loads every JSON dashboard from
+# the mounted dashboards directory on startup.
+apiVersion: 1
+
+providers:
+  - name: automl-qo
+    orgId: 1
+    folder: "AutoML Query Optimizer"
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

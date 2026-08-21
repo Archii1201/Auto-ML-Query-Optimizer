@@ -60,3 +60,8 @@ data/tpch/raw_data/
 # but don't commit DuckDB temp/wal files if any sneak in.
 *.duckdb
 *.duckdb.wal
+
+# Phase 4E: local TLS material — never commit private keys.
+deploy/nginx/certs/
+# Phase 4B: registry-copied model artifacts (regenerate via model_registry)
+models/registry/

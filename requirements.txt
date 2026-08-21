@@ -30,3 +30,23 @@ uvicorn[standard]>=0.27
 pydantic>=2.5
 cachetools>=5.3
 httpx>=0.27
+
+# ----- Phase 4A: tests + CI tooling -----
+pytest>=8.0
+ruff>=0.5
+
+# ----- Phase 4B: distributed cache -----
+redis>=5.0
+
+# ----- Phase 4C: streaming feedback bus -----
+confluent-kafka>=2.3
+
+# ----- Phase 4D: observability (metrics + tracing) -----
+prometheus-client>=0.20
+opentelemetry-sdk>=1.25
+opentelemetry-api>=1.25
+opentelemetry-instrumentation-fastapi>=0.46b0
+opentelemetry-exporter-otlp-proto-http>=1.25
+
+# ----- Phase 4F: load testing -----
+locust>=2.29

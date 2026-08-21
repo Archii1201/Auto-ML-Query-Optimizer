@@ -54,7 +54,8 @@ class RunAndLearnRequest(BaseModel):
 class CandidatePrediction(BaseModel):
     variant:        str
     knobs:          list[str]
-    predicted_ms:   float
+    # None when served via the PG-default fallback (circuit breaker OPEN).
+    predicted_ms:   float | None
     estimated_cost: float
 
 
@@ -72,7 +73,7 @@ class RunAndLearnResponse(BaseModel):
 
     candidates:      list[CandidatePrediction]
     picked_variant:  str
-    predicted_ms:    float
+    predicted_ms:    float | None
 
     actual_wall_ms:  float
     timed_out:       bool

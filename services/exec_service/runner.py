@@ -32,6 +32,11 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from services.exec_service.capture import FeedbackWriter  # noqa: E402
 from services.exec_service.metrics import REGISTRY  # noqa: E402
+from services.feedback_bus.publisher import (  # noqa: E402
+    FeedbackPublisher,
+    FilePublisher,
+    make_publisher,
+)
 from services.plan_generator.explain import execute_with_variant  # noqa: E402
 
 
@@ -66,8 +71,21 @@ class ExecutionRunner:
     fresh connection per request).
     """
 
-    def __init__(self, writer: FeedbackWriter | None = None) -> None:
-        self.writer: FeedbackWriter = writer or FeedbackWriter()
+    def __init__(
+        self,
+        writer: FeedbackWriter | None = None,
+        *,
+        publisher: FeedbackPublisher | None = None,
+    ) -> None:
+        # Phase 4C: feedback now flows through a pluggable publisher
+        # (file by default, Kafka when FEEDBACK_BUS=kafka). A `writer` arg
+        # is still accepted for backward compatibility / tests.
+        if publisher is not None:
+            self.publisher = publisher
+        elif writer is not None:
+            self.publisher = FilePublisher(writer)
+        else:
+            self.publisher = make_publisher()
 
     # ------------------------------------------------------------------
     def run_single(
@@ -103,7 +121,7 @@ class ExecutionRunner:
 
         feedback_path: Path | None = None
         if write_feedback and not timed_out and plan_json is not None:
-            feedback_path = self.writer.write(
+            feedback_path = self.publisher.publish(
                 sql=sql, variant=variant, knobs=knobs,
                 plan_json=plan_json, wall_time_ms=wall_ms,
                 predicted_ms=predicted_ms,

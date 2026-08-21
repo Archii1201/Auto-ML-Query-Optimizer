@@ -45,7 +45,7 @@ from services.plan_generator.pg_variants import VARIANTS
 class RankedCandidate:
     variant:        str
     knobs:          list[str]
-    predicted_ms:   float
+    predicted_ms:   float | None    # None = PG-default fallback (no ML call)
     estimated_cost: float
     plan_json:      list[dict[str, Any]]
 
@@ -68,7 +68,10 @@ class PlanPicker:
 
     def __init__(self, predictor: Predictor, sql_cache_capacity: int = 1024) -> None:
         self.predictor: Predictor      = predictor
-        self.cache:    HashedLRUCache  = HashedLRUCache(capacity=sql_cache_capacity)
+        self.cache:    HashedLRUCache  = HashedLRUCache(
+            capacity=sql_cache_capacity,
+            namespace=f"planpick:{predictor.regime}",
+        )
 
     # ------------------------------------------------------------------
     def pick(
@@ -78,6 +81,7 @@ class PlanPicker:
         *,
         top_k: int = 1,
         variants: dict[str, list[str]] | None = None,
+        plan_time_timeout_ms: int | None = None,
     ) -> PlanPickResult:
         t0 = time.perf_counter()
         sql_h = hash_sql(sql)
@@ -93,7 +97,10 @@ class PlanPicker:
                 elapsed_ms=(time.perf_counter() - t0) * 1000.0,
             )
 
-        plans = generate_variants(conn, sql, variants or VARIANTS)
+        gen_kwargs = {}
+        if plan_time_timeout_ms is not None:
+            gen_kwargs["plan_time_timeout_ms"] = plan_time_timeout_ms
+        plans = generate_variants(conn, sql, variants or VARIANTS, **gen_kwargs)
         if not plans:
             raise RuntimeError("plan generator returned zero candidates")
 
@@ -127,6 +134,48 @@ class PlanPicker:
             sql_hash=sql_h,
             winner=winner,
             candidates=ranked[:top_k],
+            cache_hit=False,
+            elapsed_ms=(time.perf_counter() - t0) * 1000.0,
+        )
+
+    # ------------------------------------------------------------------
+    def pick_default(
+        self,
+        conn,
+        sql: str,
+        *,
+        plan_time_timeout_ms: int | None = None,
+    ) -> PlanPickResult:
+        """
+        Fault-tolerance fallback (Phase 4A): when the ML prediction path
+        is unavailable (circuit breaker OPEN), we do NOT call the model.
+        We ask PostgreSQL for its own default plan and return it as the
+        winner with `predicted_ms=NaN` (i.e. "PG decided, not the model").
+        The system keeps serving correct plans, just without learned
+        ranking, exactly as the system-flow doc requires.
+        """
+        t0 = time.perf_counter()
+        sql_h = hash_sql(sql)
+
+        gen_kwargs = {}
+        if plan_time_timeout_ms is not None:
+            gen_kwargs["plan_time_timeout_ms"] = plan_time_timeout_ms
+        plans = generate_variants(conn, sql, {"default": []}, **gen_kwargs)
+        if not plans:
+            raise RuntimeError("plan generator returned zero candidates")
+
+        p = plans[0]
+        cand = RankedCandidate(
+            variant=p.variant,
+            knobs=p.knobs,
+            predicted_ms=None,
+            estimated_cost=p.estimated_cost,
+            plan_json=p.plan_json,
+        )
+        return PlanPickResult(
+            sql_hash=sql_h,
+            winner=cand,
+            candidates=[cand],
             cache_hit=False,
             elapsed_ms=(time.perf_counter() - t0) * 1000.0,
         )

@@ -17,6 +17,7 @@ oracle / regret numbers vs. the model's pick.
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
@@ -28,9 +29,16 @@ from services.plan_generator.pg_variants import VARIANTS, GeneratedPlan
 EXPLAIN_PLAN_PREFIX = "EXPLAIN (FORMAT JSON) "
 EXPLAIN_ANALYZE_PREFIX = "EXPLAIN (ANALYZE, FORMAT JSON) "
 
+# TPC-H/TPC-DS tables live in dedicated schemas (see Phase 3E.1 /
+# migrate_to_schemas.py). `RESET ALL` clears search_path, so unqualified
+# table names in served SQL would fail to resolve. We restore a sane
+# search_path after every RESET. Override via ML_SERVICE_SEARCH_PATH.
+SEARCH_PATH = os.environ.get("ML_SERVICE_SEARCH_PATH", "tpch, public")
+
 
 def _set_knobs(cur, knobs: list[str]) -> None:
     cur.execute("RESET ALL;")
+    cur.execute(f"SET search_path = {SEARCH_PATH};")
     for stmt in knobs:
         cur.execute(stmt + ";")
 

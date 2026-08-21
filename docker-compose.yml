@@ -1,0 +1,268 @@
+# =============================================================================
+# Phase 4E — one-command bring-up for the whole system.
+#
+# Profiles let you start subsets:
+#   docker compose up                              -> core (pg, redis, 2x ml, nginx)
+#   docker compose --profile streaming up          -> + kafka, kafka-ui, consumer
+#   docker compose --profile observability up      -> + prometheus, grafana, tempo, otel
+#   docker compose --profile loadtest up locust    -> + load generator
+#   docker compose --profile all up                -> everything
+#
+# Secrets/config come from a .env file (see .env.example). Data survives
+# restarts via named volumes. Every long-lived service has a healthcheck so
+# dependents can `condition: service_healthy`.
+# =============================================================================
+
+x-ml-env: &ml-env
+  PGHOST: postgres
+  PGPORT: "5432"
+  PGDATABASE: ${PGDATABASE:-automl_qo}
+  PGUSER: ${PGUSER:-postgres}
+  PGPASSWORD: ${PGPASSWORD:-postgres}
+  ML_SERVICE_HOST: "0.0.0.0"
+  ML_SERVICE_PORT: "8000"
+  CACHE_BACKEND: ${CACHE_BACKEND:-redis}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  FEEDBACK_BUS: ${FEEDBACK_BUS:-file}
+  KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-kafka:9092}
+  FEEDBACK_TOPIC: ${FEEDBACK_TOPIC:-query.feedback.v1}
+  PROMETHEUS_ENABLED: ${PROMETHEUS_ENABLED:-true}
+  OTEL_ENABLED: ${OTEL_ENABLED:-false}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
+  ML_LOG_LEVEL: ${ML_LOG_LEVEL:-INFO}
+  # Phase 5C: token that guards POST /admin/reload-models (model hot-swap).
+  ML_ADMIN_TOKEN: ${ML_ADMIN_TOKEN:-changeme}
+
+# Phase 5: shared state so the worker and the ml-service replicas see the
+# same feedback, features.csv, retrain state, and — crucially — the same
+# model registry (so a promotion by the worker is visible to serving).
+x-shared-data: &shared-data
+  - feedbackdata:/app/data/feedback
+  - processeddata:/app/data/processed
+  - registrydata:/app/models/registry
+
+x-ml-service: &ml-service
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: automl-qo/ml-service:latest
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
+    interval: 15s
+    timeout: 3s
+    retries: 3
+    start_period: 40s
+
+services:
+  # ------------------------------------------------------------ datastores
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${PGDATABASE:-automl_qo}
+      POSTGRES_USER: ${PGUSER:-postgres}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-postgres}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-automl_qo}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "${PG_PORT:-5432}:5432"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ------------------------------------------------------------ ML service (x2)
+  ml-service-1:
+    <<: *ml-service
+    container_name: ml-service-1
+    environment:
+      <<: *ml-env
+    volumes: *shared-data
+
+  ml-service-2:
+    <<: *ml-service
+    container_name: ml-service-2
+    environment:
+      <<: *ml-env
+    volumes: *shared-data
+
+  # ------------------------------------------------------------ gateway / LB
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - ml-service-1
+      - ml-service-2
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/nginx/certs:/etc/nginx/certs:ro
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+
+  # ------------------------------------------------------------ streaming
+  kafka:
+    image: bitnami/kafka:3.7
+    profiles: ["streaming", "all"]
+    restart: unless-stopped
+    environment:
+      KAFKA_CFG_NODE_ID: "1"
+      KAFKA_CFG_PROCESS_ROLES: "controller,broker"
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    volumes:
+      - kafkadata:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    profiles: ["streaming", "all"]
+    restart: unless-stopped
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      DYNAMIC_CONFIG_ENABLED: "true"
+    ports:
+      - "${KAFKA_UI_PORT:-8080}:8080"
+
+  feedback-consumer:
+    <<: *ml-service
+    profiles: ["streaming", "all"]
+    container_name: feedback-consumer
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      <<: *ml-env
+      FEEDBACK_BUS: kafka
+    command: ["python", "-m", "services.feedback_bus.consumer"]
+    volumes: *shared-data
+    healthcheck:
+      disable: true
+
+  # ------------------------------------------------------------ retrain loop (5E)
+  automl-worker:
+    <<: *ml-service
+    profiles: ["retrain", "all"]
+    container_name: automl-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *ml-env
+      AUTOML_PROFILE: ${AUTOML_PROFILE:-fast}
+      AUTOML_POLL_INTERVAL_S: ${AUTOML_POLL_INTERVAL_S:-300}
+      AUTOML_REGIME: ${AUTOML_REGIME:-plan_time}
+      # Reload BOTH replicas after a promotion (comma-separated).
+      AUTOML_RELOAD_URL: ${AUTOML_RELOAD_URL:-http://ml-service-1:8000,http://ml-service-2:8000}
+      # Scrape one replica's calibration gauge for the drift trigger.
+      AUTOML_METRICS_URL: ${AUTOML_METRICS_URL:-http://ml-service-1:8000/metrics}
+    command: ["python", "-m", "services.automl_service.worker"]
+    volumes: *shared-data
+    healthcheck:
+      disable: true
+
+  # ------------------------------------------------------------ observability
+  prometheus:
+    image: prom/prometheus:latest
+    profiles: ["observability", "all"]
+    restart: unless-stopped
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    ports:
+      - "${PROM_PORT:-9090}:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    profiles: ["observability", "all"]
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+
+  tempo:
+    image: grafana/tempo:latest
+    profiles: ["observability", "all"]
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./deploy/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempodata:/var/tempo
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    profiles: ["observability", "all"]
+    restart: unless-stopped
+    command: ["--config=/etc/otel/config.yaml"]
+    depends_on:
+      - tempo
+    volumes:
+      - ./deploy/otel-collector/config.yaml:/etc/otel/config.yaml:ro
+    ports:
+      - "4318:4318"
+      - "4317:4317"
+
+  # ------------------------------------------------------------ load testing
+  locust:
+    image: locustio/locust:latest
+    profiles: ["loadtest", "all"]
+    depends_on:
+      - nginx
+    volumes:
+      - ./loadtest:/mnt/locust:ro
+    command: >
+      -f /mnt/locust/locustfile.py
+      --host ${LOAD_TARGET:-http://nginx:80}
+    ports:
+      - "${LOCUST_PORT:-8089}:8089"
+
+volumes:
+  pgdata:
+  redisdata:
+  kafkadata:
+  feedbackdata:
+  processeddata:
+  registrydata:
+  promdata:
+  grafanadata:
+  tempodata:

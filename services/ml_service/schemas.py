@@ -23,7 +23,9 @@ class ServiceInfo(BaseModel):
     regime:        str | None     = None
     model_name:    str | None     = None
     feature_count: int | None     = None
-    cache_stats:   dict[str, int] = Field(default_factory=dict)
+    # Values are mixed (ints for hit/miss counts, strings for backend name)
+    # since Phase 4B made the cache backend pluggable.
+    cache_stats:   dict[str, Any] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +65,9 @@ class PredictResponse(BaseModel):
 class PlanCandidate(BaseModel):
     variant:        str
     knobs:          list[str]
-    predicted_ms:   float
+    # None when the circuit breaker is OPEN and we served PG's default
+    # plan without calling the model (Phase 4A fault-tolerance fallback).
+    predicted_ms:   float | None
     estimated_cost: float
     plan_json:      list[dict[str, Any]] | None = None
 

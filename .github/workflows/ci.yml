@@ -1,0 +1,54 @@
+name: CI
+
+# Phase 4A — lint + fast unit tests on every push / PR.
+# We intentionally run the *resilience* unit tests (circuit breaker,
+# timeout budget, connection pool) which need no database and no heavy
+# ML stack, so CI stays fast and deterministic. Data-dependent tests
+# (e.g. tests/test_no_target_leakage.py, which reads features.csv and
+# needs pandas/scikit-learn) are excluded from CI.
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [ "3.11", "3.12" ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install lightweight deps
+        run: |
+          python -m pip install --upgrade pip
+          # Only what the infra-free tests + lint need (fast install).
+          pip install pytest ruff psycopg2-binary cachetools prometheus-client
+
+      - name: Lint (critical errors block; style is advisory)
+        run: |
+          # Hard gate: real bugs — syntax errors + undefined names.
+          ruff check --select E9,F63,F7,F82 services tests scripts feature_engineering
+          # Advisory: full style report, never fails the build.
+          ruff check services tests || true
+
+      - name: Run infra-free unit tests (Phase 4A-4C, Phase 5D-5F)
+        run: |
+          # Exclude data/ML-dependent tests (need pandas / numpy / features.csv).
+          # The pure Phase 5 logic (triggers, drift, watchdog, worker cycle,
+          # file lock) has no heavy deps and runs here; the pandas/numpy tests
+          # (merge, trainer, promotion gate) run locally / in the full suite.
+          pytest -q tests/ \
+            --ignore=tests/test_no_target_leakage.py \
+            --ignore=tests/test_feedback_merge.py \
+            --ignore=tests/test_retrain_trainer.py \
+            --ignore=tests/test_promotion_gate.py

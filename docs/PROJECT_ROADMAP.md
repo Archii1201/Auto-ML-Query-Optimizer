@@ -185,59 +185,39 @@ services:
 
 ---
 
-## Phase 5 — AutoML retraining loop *(2-3 days)*
+## Phase 5 — AutoML retraining loop ✅ *(implemented)*
 
-**Goal:** Close the user's feedback loop — the system gets better
-with every query it serves.
+**Goal:** Close the feedback loop — the system gets better from its own
+execution traces, with the same scientific gates as Phase 3G/3H.
 
-### 5 deliverables
+**Detailed roadmap:** [PHASE5_RETRAINING.md](PHASE5_RETRAINING.md) ·
+[Index](PHASE5_OVERVIEW.md)
 
-```
-services/
-  automl_service/
-    consumer.py          # Kafka consumer → appends to features.csv
-    trainer.py           # nightly job: run phase3b/train_models
-    promotion.py         # if new model beats current on holdout,
-                         # atomically swap automl_best.joblib
-    drift.py             # detect distribution shift → trigger
-                         # an out-of-cycle retrain
-```
+### Subphases (5A → 5F) — all done
 
-### 5 retraining policy
+| Sub | Deliverable | Status | Doc |
+| --- | --- | --- | --- |
+| **5A** | Automated feedback → `features.csv` merge + `validate_dataset` gate | ✅ | [PHASE5A_MERGE.md](PHASE5A_MERGE.md) |
+| **5B** | `retrain.py` → candidate artifact in model registry | ✅ | [PHASE5B_RETRAIN.md](PHASE5B_RETRAIN.md) |
+| **5C** | OOF promotion gate + registry promote + model reload | ✅ | [PHASE5C_PROMOTION.md](PHASE5C_PROMOTION.md) |
+| **5D** | Triggers: row volume, cron, pred/actual drift | ✅ | [PHASE5D_TRIGGERS.md](PHASE5D_TRIGGERS.md) |
+| **5E** | `automl-worker` + docker compose `retrain` profile | ✅ | [PHASE5E_ORCHESTRATION.md](PHASE5E_ORCHESTRATION.md) |
+| **5F** | Post-promote watchdog + rollback | ✅ | [PHASE5F_WATCHDOG.md](PHASE5F_WATCHDOG.md) |
 
-```
-trigger_retrain when:
-    new_rows_since_last_retrain > 500
-    OR
-    rolling_q_error_p95 > 1.5 * baseline_q_error_p95   # drift
-    OR
-    cron("0 2 * * *")                                   # nightly
-```
+### Promotion gate (summary)
 
-### 5 promotion gate
+Candidate promotes only if OOF **plan-pick** beats incumbent (CI lower bound
+≥ −2 pp), q-error median ≤ 1.05× incumbent, inference p99 ≤ 50 ms, leakage
+tests pass. See [PHASE5_RETRAINING.md](PHASE5_RETRAINING.md) for full policy.
 
-```
-candidate must beat current on:
-    plan_pick_accuracy >= current.plan_pick_accuracy
-    AND
-    q_error_median <= 1.05 * current.q_error_median
-    AND
-    inference_p99_ms <= 50    # SLA
-```
-
-If all three hold → atomic swap. Otherwise log + alert.
-
-### 5 maps to the System Flow
+### Maps to the System Flow
 
 ```
 ... Store Data → Retrain Model → Improve System
        ↑              ↑                ↑
-   Kafka topic    trainer.py     promotion.py
+   feedback/     retrain.py      promotion.py
+   Kafka consumer   + train_models   + model registry
 ```
-
-This is where the *AutoML* in the project name finally pays off:
-the trainer re-runs the entire Phase 3B pipeline (Optuna + AutoML
-selector) on the growing dataset, with no human in the loop.
 
 ---
 

@@ -101,14 +101,27 @@ class Predictor:
         regime: str = "plan_time",
         models_dir: Path = DEFAULT_MODELS_DIR,
         cache_capacity: int = 4096,
+        *,
+        version: str = "current",
     ) -> None:
         self.regime: str = regime
         self.models_dir: Path = models_dir
-        self.cache: HashedLRUCache = HashedLRUCache(capacity=cache_capacity)
+        self.cache: HashedLRUCache = HashedLRUCache(
+            capacity=cache_capacity, namespace=f"predict:{regime}",
+        )
         self._lock: Lock = Lock()
         self._missing_warned: bool = False
 
-        artifact_path = models_dir / regime / "automl_best.joblib"
+        # Phase 4B: resolve the artifact through the model registry so we
+        # can pin/roll back versions. Falls back to the legacy
+        # models/phase3b/{regime}/automl_best.joblib when the registry is
+        # empty, keeping pre-4B behaviour byte-for-byte.
+        from services.ml_service.model_registry import REGISTRY as _MODEL_REGISTRY
+        try:
+            artifact_path = _MODEL_REGISTRY.resolve_artifact(regime, version)
+        except FileNotFoundError:
+            artifact_path = models_dir / regime / "automl_best.joblib"
+        self.version_requested: str = version
         if not artifact_path.exists():
             raise FileNotFoundError(
                 f"AutoML winner missing: {artifact_path}. Run phase3b/train_models.py first."
@@ -284,3 +297,17 @@ def get_predictor(regime: str = "plan_time") -> Predictor:
         if regime not in _predictors:
             _predictors[regime] = Predictor(regime=regime)
         return _predictors[regime]
+
+
+def reset_predictors(regime: str | None = None) -> None:
+    """
+    Drop the memoized Predictor(s) so the next get_predictor() rebuilds
+    from the registry's *current* version. Used by Phase 5C's
+    POST /admin/reload-models to hot-swap a newly promoted model without a
+    process restart.
+    """
+    with _init_lock:
+        if regime is None:
+            _predictors.clear()
+        else:
+            _predictors.pop(regime, None)

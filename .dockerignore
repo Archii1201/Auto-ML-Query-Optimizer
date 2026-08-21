@@ -1,0 +1,20 @@
+# Keep the build context (and image) small + fast.
+.git
+.github
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Large data corpora are not needed inside the serving image; the
+# feedback dir is created at runtime. Trained model artifacts ARE needed,
+# so models/ is intentionally NOT ignored.
+data/
+notebooks/
+*.ipynb
+
+# Local-only TLS material / secrets must never enter the image.
+deploy/nginx/certs/
+.env

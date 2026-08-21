@@ -1,0 +1,70 @@
+{
+  "uid": "ml-service-health",
+  "title": "ML Service — Health",
+  "tags": ["automl-qo", "phase4d"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Request rate (plan-picks/s)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(plan_picks_total[5m]))", "legendFormat": "plan-picks/s" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Inference latency (ms)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(inference_latency_ms_bucket[5m])) by (le))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(inference_latency_ms_bucket[5m])) by (le))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(inference_latency_ms_bucket[5m])) by (le))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Execution latency (ms)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(execution_latency_ms_bucket[5m])) by (le))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Pool timeouts (total)",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "expr": "sum(pool_timeouts_total)" } ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "PG-default fallbacks (total)",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "expr": "sum(plan_pick_fallback_total)" } ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Cache hit ratio (plan-pick)",
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(plan_pick_cache_hits_total[5m])) / clamp_min(sum(rate(plan_pick_cache_hits_total[5m])) + sum(rate(plan_pick_cache_misses_total[5m])), 1)", "legendFormat": "hit ratio" }
+      ]
+    }
+  ]
+}

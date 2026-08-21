@@ -1,0 +1,235 @@
+{
+  "schema_version": "1",
+  "dedup_key": "f98029272b814e6db342e1d1cba899de:no_mergejoin",
+  "query_id": "online_0766b87ee1",
+  "variant": "no_mergejoin",
+  "tag": "online_oracle",
+  "sql": "SELECT c_mktsegment, COUNT(*) FROM tpch.customer GROUP BY c_mktsegment",
+  "sql_hash": "0766b87ee1",
+  "collected_at": "2026-08-15T12:52:54.127309+00:00",
+  "wall_time_ms": 162.593,
+  "summary": {
+    "estimated_total_cost": 5539.14,
+    "estimated_rows": 5,
+    "actual_rows": 5.0,
+    "actual_total_time_ms": 161.538,
+    "execution_time_ms": 161.619,
+    "planning_time_ms": 0.13,
+    "node_type": "Aggregate"
+  },
+  "plan": [
+    {
+      "Plan": {
+        "Node Type": "Aggregate",
+        "Strategy": "Sorted",
+        "Partial Mode": "Finalize",
+        "Parallel Aware": false,
+        "Async Capable": false,
+        "Startup Cost": 5537.63,
+        "Total Cost": 5539.14,
+        "Plan Rows": 5,
+        "Plan Width": 19,
+        "Actual Startup Time": 155.345,
+        "Actual Total Time": 161.538,
+        "Actual Rows": 5.0,
+        "Actual Loops": 1,
+        "Disabled": false,
+        "Group Key": [
+          "c_mktsegment"
+        ],
+        "Shared Hit Blocks": 14,
+        "Shared Read Blocks": 3600,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0,
+        "Plans": [
+          {
+            "Node Type": "Gather Merge",
+            "Parent Relationship": "Outer",
+            "Parallel Aware": false,
+            "Async Capable": false,
+            "Startup Cost": 5537.63,
+            "Total Cost": 5539.03,
+            "Plan Rows": 12,
+            "Plan Width": 19,
+            "Actual Startup Time": 155.332,
+            "Actual Total Time": 161.519,
+            "Actual Rows": 5.0,
+            "Actual Loops": 1,
+            "Disabled": false,
+            "Workers Planned": 2,
+            "Workers Launched": 2,
+            "Shared Hit Blocks": 14,
+            "Shared Read Blocks": 3600,
+            "Shared Dirtied Blocks": 0,
+            "Shared Written Blocks": 0,
+            "Local Hit Blocks": 0,
+            "Local Read Blocks": 0,
+            "Local Dirtied Blocks": 0,
+            "Local Written Blocks": 0,
+            "Temp Read Blocks": 0,
+            "Temp Written Blocks": 0,
+            "Plans": [
+              {
+                "Node Type": "Sort",
+                "Parent Relationship": "Outer",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 4537.61,
+                "Total Cost": 4537.62,
+                "Plan Rows": 5,
+                "Plan Width": 19,
+                "Actual Startup Time": 37.521,
+                "Actual Total Time": 37.523,
+                "Actual Rows": 1.67,
+                "Actual Loops": 3,
+                "Disabled": false,
+                "Sort Key": [
+                  "c_mktsegment"
+                ],
+                "Sort Method": "quicksort",
+                "Sort Space Used": 25,
+                "Sort Space Type": "Memory",
+                "Shared Hit Blocks": 14,
+                "Shared Read Blocks": 3600,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Workers": [
+                  {
+                    "Worker Number": 0,
+                    "Sort Method": "quicksort",
+                    "Sort Space Used": 25,
+                    "Sort Space Type": "Memory"
+                  },
+                  {
+                    "Worker Number": 1,
+                    "Sort Method": "quicksort",
+                    "Sort Space Used": 25,
+                    "Sort Space Type": "Memory"
+                  }
+                ],
+                "Plans": [
+                  {
+                    "Node Type": "Aggregate",
+                    "Strategy": "Hashed",
+                    "Partial Mode": "Partial",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Startup Cost": 4537.5,
+                    "Total Cost": 4537.55,
+                    "Plan Rows": 5,
+                    "Plan Width": 19,
+                    "Actual Startup Time": 37.482,
+                    "Actual Total Time": 37.483,
+                    "Actual Rows": 1.67,
+                    "Actual Loops": 3,
+                    "Disabled": false,
+                    "Group Key": [
+                      "c_mktsegment"
+                    ],
+                    "Planned Partitions": 0,
+                    "HashAgg Batches": 1,
+                    "Peak Memory Usage": 32,
+                    "Disk Usage": 0,
+                    "Shared Hit Blocks": 0,
+                    "Shared Read Blocks": 3600,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0,
+                    "Workers": [
+                      {
+                        "Worker Number": 0,
+                        "HashAgg Batches": 1,
+                        "Peak Memory Usage": 32,
+                        "Disk Usage": 0
+                      },
+                      {
+                        "Worker Number": 1,
+                        "HashAgg Batches": 1,
+                        "Peak Memory Usage": 32,
+                        "Disk Usage": 0
+                      }
+                    ],
+                    "Plans": [
+                      {
+                        "Node Type": "Seq Scan",
+                        "Parent Relationship": "Outer",
+                        "Parallel Aware": true,
+                        "Async Capable": false,
+                        "Relation Name": "customer",
+                        "Alias": "customer",
+                        "Startup Cost": 0.0,
+                        "Total Cost": 4225.0,
+                        "Plan Rows": 62500,
+                        "Plan Width": 11,
+                        "Actual Startup Time": 0.657,
+                        "Actual Total Time": 15.238,
+                        "Actual Rows": 50000.0,
+                        "Actual Loops": 3,
+                        "Disabled": false,
+                        "Shared Hit Blocks": 0,
+                        "Shared Read Blocks": 3600,
+                        "Shared Dirtied Blocks": 0,
+                        "Shared Written Blocks": 0,
+                        "Local Hit Blocks": 0,
+                        "Local Read Blocks": 0,
+                        "Local Dirtied Blocks": 0,
+                        "Local Written Blocks": 0,
+                        "Temp Read Blocks": 0,
+                        "Temp Written Blocks": 0,
+                        "Workers": []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "Planning": {
+        "Shared Hit Blocks": 0,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0
+      },
+      "Planning Time": 0.13,
+      "Triggers": [],
+      "Execution Time": 161.619
+    }
+  ],
+  "online": {
+    "request_id": "f98029272b814e6db342e1d1cba899de",
+    "predicted_ms": 197.194,
+    "model_name": "extra_trees_tuned",
+    "model_version": "f558f7e2a5ef01d4",
+    "regime": "plan_time",
+    "selected_by": "ml",
+    "knobs": [
+      "SET enable_mergejoin = off"
+    ]
+  }
+}

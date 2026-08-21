@@ -1,11 +1,11 @@
 {
   "plan_time": {
     "regime": "plan_time",
-    "model": "extra_trees_tuned",
-    "kind": "tuned_ml",
-    "q_error_median": 1.406124891904772,
-    "rmse_ms": 9186.987639610306,
-    "r2": 0.5928591849861882,
-    "plan_pick_acc": 0.48905109489051096
+    "model": "xgboost",
+    "kind": "default_ml",
+    "q_error_median": 1.2422580346671857,
+    "rmse_ms": 6382.205489265172,
+    "r2": 0.6224655226023312,
+    "plan_pick_acc": 0.4338235294117647
   }
 }

@@ -1,0 +1,103 @@
+{
+  "schema_version": "1",
+  "dedup_key": "2049e8cab7394f449e9f0be0c4e6d8e9:no_mergejoin",
+  "query_id": "online_da978a89a5",
+  "variant": "no_mergejoin",
+  "tag": "online_oracle",
+  "sql": "SELECT * FROM tpch.orders LIMIT 100",
+  "sql_hash": "da978a89a5",
+  "collected_at": "2026-08-15T12:52:58.611204+00:00",
+  "wall_time_ms": 0.976,
+  "summary": {
+    "estimated_total_cost": 2.74,
+    "estimated_rows": 100,
+    "actual_rows": 100.0,
+    "actual_total_time_ms": 0.084,
+    "execution_time_ms": 0.103,
+    "planning_time_ms": 0.12,
+    "node_type": "Limit"
+  },
+  "plan": [
+    {
+      "Plan": {
+        "Node Type": "Limit",
+        "Parallel Aware": false,
+        "Async Capable": false,
+        "Startup Cost": 0.0,
+        "Total Cost": 2.74,
+        "Plan Rows": 100,
+        "Plan Width": 107,
+        "Actual Startup Time": 0.069,
+        "Actual Total Time": 0.084,
+        "Actual Rows": 100.0,
+        "Actual Loops": 1,
+        "Disabled": false,
+        "Shared Hit Blocks": 11,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0,
+        "Plans": [
+          {
+            "Node Type": "Seq Scan",
+            "Parent Relationship": "Outer",
+            "Parallel Aware": false,
+            "Async Capable": false,
+            "Relation Name": "orders",
+            "Alias": "orders",
+            "Startup Cost": 0.0,
+            "Total Cost": 41136.0,
+            "Plan Rows": 1500000,
+            "Plan Width": 107,
+            "Actual Startup Time": 0.067,
+            "Actual Total Time": 0.073,
+            "Actual Rows": 100.0,
+            "Actual Loops": 1,
+            "Disabled": false,
+            "Shared Hit Blocks": 11,
+            "Shared Read Blocks": 0,
+            "Shared Dirtied Blocks": 0,
+            "Shared Written Blocks": 0,
+            "Local Hit Blocks": 0,
+            "Local Read Blocks": 0,
+            "Local Dirtied Blocks": 0,
+            "Local Written Blocks": 0,
+            "Temp Read Blocks": 0,
+            "Temp Written Blocks": 0
+          }
+        ]
+      },
+      "Planning": {
+        "Shared Hit Blocks": 0,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0
+      },
+      "Planning Time": 0.12,
+      "Triggers": [],
+      "Execution Time": 0.103
+    }
+  ],
+  "online": {
+    "request_id": "2049e8cab7394f449e9f0be0c4e6d8e9",
+    "predicted_ms": 88.328,
+    "model_name": "extra_trees_tuned",
+    "model_version": "f558f7e2a5ef01d4",
+    "regime": "plan_time",
+    "selected_by": "ml",
+    "knobs": [
+      "SET enable_mergejoin = off"
+    ]
+  }
+}

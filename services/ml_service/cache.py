@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import Any
 
-from cachetools import LRUCache
+from services.ml_service.cache_backend import CacheBackend, make_cache_backend
 
 
 # ---------------------------------------------------------------------------
@@ -82,40 +82,56 @@ class CacheStats:
 
 
 class HashedLRUCache:
-    """Thread-safe LRU keyed by SHA-256 hex digests."""
+    """
+    Thread-safe cache keyed by SHA-256 hex digests.
 
-    def __init__(self, capacity: int = 1024) -> None:
-        self._cache: LRUCache = LRUCache(maxsize=capacity)
-        self._lock:  Lock     = Lock()
-        self._hits:  int      = 0
-        self._misses: int     = 0
-        self._sets:  int      = 0
+    Phase 4B: storage is delegated to a pluggable ``CacheBackend``
+    (local LRU by default, Redis when ``CACHE_BACKEND=redis``). Hit/miss
+    bookkeeping lives here so the reported stats are identical regardless
+    of which backend is active. ``namespace`` keeps the predict cache and
+    the plan-pick cache in separate keyspaces when they share Redis.
+    """
+
+    def __init__(
+        self,
+        capacity: int = 1024,
+        *,
+        namespace: str = "cache",
+        backend: CacheBackend | None = None,
+    ) -> None:
+        self._backend: CacheBackend = backend or make_cache_backend(
+            namespace=namespace, capacity=capacity
+        )
+        self._lock:   Lock = Lock()
+        self._hits:   int  = 0
+        self._misses: int  = 0
+        self._sets:   int  = 0
 
     def get(self, key: str) -> Any | None:
+        v = self._backend.get(key)
         with self._lock:
-            v = self._cache.get(key)
             if v is None:
                 self._misses += 1
             else:
                 self._hits += 1
-            return v
+        return v
 
     def set(self, key: str, value: Any) -> None:
+        self._backend.set(key, value)
         with self._lock:
-            self._cache[key] = value
             self._sets += 1
 
     def stats(self) -> dict[str, int]:
         with self._lock:
-            return {
-                "hits":     self._hits,
-                "misses":   self._misses,
-                "sets":     self._sets,
-                "size":     len(self._cache),
-                "capacity": self._cache.maxsize,
+            base: dict[str, Any] = {
+                "hits":   self._hits,
+                "misses": self._misses,
+                "sets":   self._sets,
             }
+        base.update(self._backend.raw_stats())
+        return base
 
     def clear(self) -> None:
+        self._backend.clear()
         with self._lock:
-            self._cache.clear()
             self._hits = self._misses = self._sets = 0

@@ -1,0 +1,105 @@
+{
+  "schema_version": "1",
+  "dedup_key": "9eb690924b494756aa821edb16e72f1a:no_nestloop",
+  "query_id": "online_ca182698d7",
+  "variant": "no_nestloop",
+  "tag": "online_oracle",
+  "sql": "SELECT * FROM tpch.lineitem WHERE l_quantity > 30 LIMIT 500",
+  "sql_hash": "ca182698d7",
+  "collected_at": "2026-08-15T12:52:55.301720+00:00",
+  "wall_time_ms": 3.631,
+  "summary": {
+    "estimated_total_cost": 39.15,
+    "estimated_rows": 500,
+    "actual_rows": 500.0,
+    "actual_total_time_ms": 1.838,
+    "execution_time_ms": 2.669,
+    "planning_time_ms": 0.167,
+    "node_type": "Limit"
+  },
+  "plan": [
+    {
+      "Plan": {
+        "Node Type": "Limit",
+        "Parallel Aware": false,
+        "Async Capable": false,
+        "Startup Cost": 0.0,
+        "Total Cost": 39.15,
+        "Plan Rows": 500,
+        "Plan Width": 117,
+        "Actual Startup Time": 0.032,
+        "Actual Total Time": 1.838,
+        "Actual Rows": 500.0,
+        "Actual Loops": 1,
+        "Disabled": false,
+        "Shared Hit Blocks": 7,
+        "Shared Read Blocks": 47,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0,
+        "Plans": [
+          {
+            "Node Type": "Seq Scan",
+            "Parent Relationship": "Outer",
+            "Parallel Aware": false,
+            "Async Capable": false,
+            "Relation Name": "lineitem",
+            "Alias": "lineitem",
+            "Startup Cost": 0.0,
+            "Total Cost": 187607.19,
+            "Plan Rows": 2395885,
+            "Plan Width": 117,
+            "Actual Startup Time": 0.031,
+            "Actual Total Time": 1.774,
+            "Actual Rows": 500.0,
+            "Actual Loops": 1,
+            "Disabled": false,
+            "Filter": "(l_quantity > '30'::numeric)",
+            "Rows Removed by Filter": 782,
+            "Shared Hit Blocks": 7,
+            "Shared Read Blocks": 47,
+            "Shared Dirtied Blocks": 0,
+            "Shared Written Blocks": 0,
+            "Local Hit Blocks": 0,
+            "Local Read Blocks": 0,
+            "Local Dirtied Blocks": 0,
+            "Local Written Blocks": 0,
+            "Temp Read Blocks": 0,
+            "Temp Written Blocks": 0
+          }
+        ]
+      },
+      "Planning": {
+        "Shared Hit Blocks": 0,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Local Hit Blocks": 0,
+        "Local Read Blocks": 0,
+        "Local Dirtied Blocks": 0,
+        "Local Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0
+      },
+      "Planning Time": 0.167,
+      "Triggers": [],
+      "Execution Time": 2.669
+    }
+  ],
+  "online": {
+    "request_id": "9eb690924b494756aa821edb16e72f1a",
+    "predicted_ms": 120.046,
+    "model_name": "extra_trees_tuned",
+    "model_version": "f558f7e2a5ef01d4",
+    "regime": "plan_time",
+    "selected_by": "oracle",
+    "knobs": [
+      "SET enable_nestloop  = off"
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+# Phase 4D — OpenTelemetry Collector.
+# Receives OTLP traces from the ML service (HTTP :4318 / gRPC :4317),
+# batches them, and exports to Tempo. Keeping a collector in the middle
+# means apps only ever speak OTLP — swapping Tempo for Jaeger/Datadog is a
+# one-line exporter change here, not an app change.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch:
+    timeout: 5s
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo, debug]
